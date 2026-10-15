@@ -1,0 +1,270 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="color-scheme" content="dark" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M16 2 30 16 16 30 2 16Z' fill='%230c1917' stroke='%2370e2be' stroke-width='2'/%3E%3C/svg%3E" />
+  <title>湖南地形全息扫描 · 沙盘视角 Demo（陀螺仪 AR）</title>
+  <!-- 展示层样式【原样引用】参考项目，保证外观逐像素一致：
+       style.css = 版式，sites.css = 标记 / 准心 / 引线 / 资料卡 / 光柱
+       本页自己的 AR 附加样式写在下面的 <style> 里，不改动这两个文件。 -->
+  <link rel="stylesheet" href="./style.css" />
+  <link rel="stylesheet" href="./sites.css" />
+  <script type="importmap">
+    {"imports":{"three":"./vendor/three/three.module.js"}}
+  </script>
+  <style>
+    /* ---------- AR 附加层（本页新增，风格沿用参考项目的暗绿 / 薄荷色板） ---------- */
+    #loading{position:fixed;inset:0;z-index:60;display:none;place-items:center;
+      background:#081211;color:#8eaaa2;font-size:13px;letter-spacing:.06em}
+    #loading.on{display:grid}
+
+    .ar-telemetry{position:absolute;z-index:2;left:30px;bottom:47px;display:flex;gap:16px;
+      font:10.5px ui-monospace,monospace;letter-spacing:.06em;color:#7fa79a;
+      pointer-events:none;transition:color .3s}
+    .ar-telemetry b{color:#9fe3c9;font-weight:400}
+    .ar-telemetry.is-warn{color:#c9a06a}
+    .ar-telemetry.is-warn b{color:#f0c886}
+
+    .ar-toast{position:absolute;z-index:9;left:50%;top:76px;transform:translateX(-50%);
+      background:rgba(9,29,25,.94);border:1px solid #3f8b73;color:#c8f5e2;
+      padding:7px 15px;font-size:12px;border-radius:999px;opacity:0;
+      transition:opacity .22s;pointer-events:none;max-width:70%;text-align:center}
+    .ar-toast.on{opacity:1}
+
+    .ar-gate{position:absolute;z-index:9;left:50%;bottom:76px;transform:translateX(-50%);
+      display:flex;align-items:center;gap:9px;padding:9px 17px;cursor:pointer;
+      border:1px solid #4d8f7a;border-radius:999px;background:rgba(9,29,25,.92);
+      color:#b6f0d8;font:12px Inter,"PingFang SC","Microsoft YaHei",sans-serif;
+      letter-spacing:.04em;box-shadow:0 0 22px rgba(63,190,150,.22)}
+    .ar-gate:hover,.ar-gate:focus-visible{background:rgba(20,52,42,.95);outline:none}
+    .ar-gate[hidden]{display:none}
+    .ar-gate b{color:#7ff0c4;font-size:14px}
+
+    .ar-controls .camera-actions+.camera-actions{margin-top:8px}
+    .ar-controls .toggle-row{margin-top:14px}
+    .ar-controls .angle-readout{margin-top:14px}
+    .ar-controls .hint-line{font-size:10px;line-height:1.65;color:#79978d;margin:9px 0 0}
+
+    @media(max-width:780px){
+      .ar-telemetry{left:19px;bottom:41px;gap:11px;font-size:9.5px}
+      .ar-gate{bottom:64px;font-size:11px;padding:8px 13px}
+    }
+
+    /* ---------- 完全移除地面暗底与渐变晕影 ---------- */
+    :root, html, body {
+      background: transparent !important;
+    }
+    .stage {
+      background: transparent !important;
+    }
+    .stage:after {
+      display: none !important;
+    }
+
+    /* ---------- 抽屉式设置面板 ---------- */
+    .app {
+      position: relative;
+      display: block !important;
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+    }
+    .stage {
+      position: absolute !important;
+      inset: 0 !important;
+      width: 100% !important;
+      height: 100% !important;
+    }
+    .stage-top-right {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      pointer-events: auto;
+    }
+    .ar-btn-settings {
+      pointer-events: auto;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      background: rgba(9,29,25,.88);
+      border: 1px solid #3f8b73;
+      border-radius: 999px;
+      color: #b6f0d8;
+      padding: 6px 14px;
+      font: 12px Inter,"PingFang SC","Microsoft YaHei",sans-serif;
+      letter-spacing: .04em;
+      box-shadow: 0 0 16px rgba(63,190,150,.18);
+      transition: background .2s, border-color .2s, box-shadow .2s;
+    }
+    .ar-btn-settings:hover {
+      background: rgba(20,52,42,.95);
+      border-color: #69dcc4;
+      box-shadow: 0 0 20px rgba(63,190,150,.35);
+    }
+    .ar-btn-settings .gear-icon {
+      font-size: 14px;
+      line-height: 1;
+    }
+    .panel {
+      position: fixed !important;
+      right: 0 !important;
+      top: 0 !important;
+      bottom: 0 !important;
+      width: 340px !important;
+      max-width: 92vw !important;
+      z-index: 50 !important;
+      background: rgba(12,25,23,.94) !important;
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      border-left: 1px solid #294038 !important;
+      box-shadow: -10px 0 35px rgba(0,0,0,.5);
+      transform: translateX(100%);
+      transition: transform .28s cubic-bezier(.16,1,.3,1), opacity .25s ease;
+      opacity: 0;
+      pointer-events: none;
+    }
+    .panel.is-open {
+      transform: translateX(0);
+      opacity: 1;
+      pointer-events: auto;
+    }
+    .panel-close-btn {
+      position: absolute;
+      right: 18px;
+      top: 18px;
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      border: 1px solid #376454;
+      background: rgba(24,50,42,.7);
+      color: #9adaca;
+      font-size: 22px;
+      line-height: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: background .2s, border-color .2s, color .2s;
+      z-index: 10;
+      padding: 0;
+    }
+    .panel-close-btn:hover {
+      background: #28523f;
+      border-color: #69dcc4;
+      color: #ffffff;
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <section class="stage" aria-label="湖南地形三维沙盘">
+      <video id="camera-feed" class="camera-feed" autoplay muted playsinline hidden aria-label="实时摄像头背景"></video>
+      <div id="scene"></div>
+      <svg id="site-stems" class="site-stems" aria-hidden="true"></svg>
+      <div id="site-markers" class="site-markers" aria-label="地形地点锚点"></div>
+      <div id="site-story" class="site-story" aria-live="polite"><svg class="story-links" aria-hidden="true"></svg><div class="story-cards"></div></div>
+      <div class="stage-top">
+        <div class="brand"><span class="brand-mark"></span><div><strong>HUNAN / TERRAIN LAB</strong><small>物理沙盘 · Pad 观察位模拟</small></div></div>
+        <div class="stage-top-right">
+          <div class="live"><span></span> LIVE VIEW</div>
+          <button id="btn-open-panel" class="ar-btn-settings" type="button" aria-label="打开设置面板"><span class="gear-icon">⚙</span><span>设置</span></button>
+        </div>
+      </div>
+      <div class="reticle" aria-hidden="true" data-state="idle"><svg viewBox="-30 -30 60 60">
+        <circle class="reticle-backplate" r="16"/><circle class="reticle-halo" r="25"/><circle class="reticle-ring" r="16"/>
+        <g class="reticle-ticks"><path d="M 0 -27 V -21 M 0 27 V 21 M -27 0 H -21 M 27 0 H 21"/></g>
+        <circle class="reticle-core" r="1.8"/>
+      </svg></div>
+      <div id="site-callout" class="site-callout" hidden><span id="callout-mode"></span><strong id="callout-name"></strong><small id="callout-anchor"></small></div>
+      <div class="ar-telemetry" id="ar-telemetry">
+        <span>对齐 <b id="tel-align">—</b></span>
+        <span>陀螺 <b id="tel-gyro">—</b></span>
+        <span>视野 <b id="tel-view">—</b></span>
+        <span>漂移 <b id="tel-drift">—</b></span>
+      </div>
+      <div class="stage-bottom"><span id="hint">拖动改变视线 · 点击地形触发扫描</span><span id="scan-readout">中心涟漪待机</span></div>
+      <div class="ar-integration-note" style="display:none"></div>
+      <div id="error" class="error" hidden></div>
+      <div class="ar-toast" id="ar-toast"></div>
+      <button class="ar-gate" id="ar-gate" type="button"><b>◎</b> 真机：点这里开启陀螺仪跟随</button>
+    </section>
+
+    <aside class="panel" id="panel">
+      <button id="btn-close-panel" class="panel-close-btn" type="button" aria-label="关闭设置面板">×</button>
+      <header class="panel-header">
+        <span class="eyebrow">INTERACTIVE EXHIBIT / 01</span>
+        <h1>湖南地形<br><em>全息扫描</em></h1>
+        <p>站在沙盘边缘，从支架上的 Pad 视角观察真实高程地形与全息地标。</p>
+      </header>
+
+      <section class="control-section">
+        <div class="section-title"><span>01</span><h2>支架位置</h2></div>
+        <div class="rail-diagram" aria-hidden="true"><div class="rail-map">地形沙盘</div><div class="rail-line"></div><div id="pad-icon" class="pad-icon"></div><span class="rail-caption">边缘支架 / PAD</span></div>
+        <label class="slider-label" for="height"><span>安装高度</span><output id="height-value">0.56 m</output></label>
+        <input id="height" type="range" min="0.4" max="2.5" step="0.02" value="0.56">
+        <label class="slider-label" for="distance"><span>离中心距离</span><output id="distance-value">2.0 m</output></label>
+        <input id="distance" type="range" min="1.2" max="4.5" step="0.05" value="2.0">
+        <label class="slider-label" for="zoom"><span>镜头缩放</span><output id="zoom-value">1.1×</output></label>
+        <input id="zoom" type="range" min="0.8" max="3.5" step="0.05" value="1.1">
+        <label class="slider-label" for="lateral"><span>沿边左右位置</span><output id="lateral-value">0.0 m</output></label>
+        <input id="lateral" type="range" min="-1.4" max="1.4" step="0.05" value="0">
+        <div class="save-actions" style="display:flex;gap:8px;margin-top:16px">
+          <button id="btn-save-settings" type="button" class="scan-button" style="margin:0;flex:1;height:38px;background:#1b4d3e;border-color:#53e9b5;color:#e6fff5;font-size:12px;display:flex;align-items:center;justify-content:center;gap:6px">
+            <span style="font-size:14px;vertical-align:0">💾</span><span>保存设置参数</span>
+          </button>
+          <button id="btn-reset-settings" type="button" style="padding:0 12px;font-size:11px;background:#142922;border:1px solid #376454;color:#a3c7bc;border-radius:4px;cursor:pointer">
+            恢复默认
+          </button>
+        </div>
+      </section>
+
+      <section class="control-section ar-controls">
+        <div class="section-title"><span>02</span><h2>AR 交互与校准</h2></div>
+        <div class="camera-actions">
+          <button id="ar-align" type="button">重新对齐</button>
+          <button id="reference-toggle" type="button" aria-pressed="false">关闭参考模型</button>
+        </div>
+        <div class="camera-actions" style="margin-top:8px">
+          <button id="center-scan" class="scan-button" style="margin:0;min-height:38px;height:auto"><span>◎</span> 发起中心扫描</button>
+          <button id="ar-zero" type="button">漂移归零</button>
+        </div>
+        <div class="toggle-row" style="margin-top:12px">
+          <div><strong>待机中心涟漪</strong><small>准心落在地形上向外扩散</small></div>
+          <label class="switch"><input id="idle-toggle" type="checkbox" checked><span></span></label>
+        </div>
+        <div class="toggle-row" style="margin-top:10px">
+          <div><strong>视野裁剪</strong><small>只渲染落在视野内的锚点</small></div>
+          <label class="switch"><input id="ar-cull" type="checkbox" checked><span></span></label>
+        </div>
+        <div class="toggle-row" style="margin-top:10px">
+          <div><strong>遮挡剔除</strong><small>山体挡住锚点时一并隐藏光柱与图标</small></div>
+          <label class="switch"><input id="ar-occl" type="checkbox" checked><span></span></label>
+        </div>
+        <div class="toggle-row" style="margin-top:10px">
+          <div><strong>高频融合</strong><small>用 devicemotion 补足低频</small></div>
+          <label class="switch"><input id="ar-fusion" type="checkbox" checked><span></span></label>
+        </div>
+        <button id="gyro-toggle" hidden></button>
+        <button id="camera-toggle" hidden></button>
+        <button id="ar-reset-view" type="button" style="display:none"></button>
+        <p id="ar-status" class="camera-status" style="margin-top:10px">摄像头与陀螺仪已自动启用</p>
+        <p id="camera-status" class="camera-status" style="display:none"></p>
+      </section>
+
+      <section class="control-section places-section">
+        <div class="section-title"><span>03</span><h2>地形锚点 <small>11 处</small></h2></div>
+        <p class="places-hint">坐标按真实经纬度投到 DEM；范围和河流采用代表性位置。</p>
+        <div id="site-list" class="site-list"></div>
+        <article id="site-detail" class="site-detail" aria-live="polite"><p class="detail-empty">选择地形上的光点，查看地点档案。</p></article>
+      </section>
+
+      <footer class="panel-footer"><span>DEM 2027 × 2318</span><span>MAPZEN / HUNAN</span></footer>
+    </aside>
+  </main>
+  <div id="loading" class="on">正在加载湖南地形数据…</div>
+  <script type="module" src="./holo-app.js?v=20261015-rollfix2"></script>
+</body>
+</html>

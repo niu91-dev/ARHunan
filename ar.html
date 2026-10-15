@@ -1,0 +1,633 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>AR 跟踪稳定性测试 · 湖南地形沙盘</title>
+<!-- 空 favicon：避免浏览器自动请求 /favicon.ico 产生 404，
+     那条 404 会污染自动化回归里的「控制台零报错」判定。 -->
+<link rel="icon" href="data:,">
+<style>
+  :root{
+    --bg:#0b1418; --panel:#12232a; --line:#1e3a44; --fg:#e8f4f6; --dim:#8fadb5;
+    --ok:#3ddc97; --warn:#ffb020; --bad:#ff5c5c; --acc:#4fd1e0;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);
+    font:14px/1.5 -apple-system,"PingFang SC","Microsoft YaHei",system-ui,sans-serif}
+  body{overflow:hidden}
+  canvas{display:block;touch-action:none}
+
+  #enter-wrap{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;
+    justify-content:center;gap:14px;padding:24px;text-align:center;z-index:20;background:var(--bg);
+    overflow:auto}
+  h1{font-size:20px;margin:0}
+  .sub{color:var(--dim);font-size:13px;max-width:520px;margin:0}
+  button{background:var(--acc);color:#04222a;border:0;border-radius:10px;
+    padding:13px 22px;font-size:15px;font-weight:600;cursor:pointer}
+  button.ghost{background:transparent;color:var(--fg);border:1px solid var(--line);font-weight:400}
+  button:disabled{opacity:.5}
+  .btnrow{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;
+    padding:12px 14px;text-align:left;max-width:560px;width:100%}
+  .row{display:flex;justify-content:space-between;gap:12px;padding:3px 0;font-size:13px}
+  .row .k{color:var(--dim);flex:0 0 auto}
+  .row .v{text-align:right;font-variant-numeric:tabular-nums}
+  .b{display:inline-block;padding:1px 8px;border-radius:999px;font-size:12px;font-weight:600}
+  .b-ok{background:rgba(61,220,151,.16);color:var(--ok)}
+  .b-warn{background:rgba(255,176,32,.16);color:var(--warn)}
+  .b-bad{background:rgba(255,92,92,.16);color:var(--bad)}
+  .b-idle{background:rgba(143,173,181,.14);color:var(--dim)}
+
+  #cam{display:none;width:100%;max-width:560px;border-radius:10px;background:#000;
+    border:1px solid var(--line);aspect-ratio:4/3;object-fit:cover}
+
+  /* AR 中的 HUD（dom-overlay 的 root —— 只有它的子树会被渲染） */
+  #hud{position:fixed;left:0;right:0;bottom:0;padding:10px 12px calc(10px + env(safe-area-inset-bottom));
+    display:none;z-index:30;pointer-events:none;
+    background:linear-gradient(to top,rgba(4,14,18,.92),rgba(4,14,18,.0))}
+  #hud.on{display:block}
+  #hud .grid{display:grid;grid-template-columns:1fr 1fr;gap:5px 14px;max-width:640px;margin:0 auto}
+  #hud .row{padding:1px 0;font-size:12.5px}
+  #hud .big{font-size:19px;font-weight:700;font-variant-numeric:tabular-nums}
+  #hud .hint{text-align:center;color:var(--dim);font-size:12px;margin-top:8px}
+  #hud .warnline{text-align:center;color:var(--bad);font-size:12.5px;margin-top:6px;font-weight:600}
+  .flash{position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:40;
+    background:rgba(79,209,224,.92);color:#04222a;padding:8px 16px;border-radius:999px;
+    font-size:13px;font-weight:600;opacity:0;transition:opacity .25s;pointer-events:none}
+  .flash.on{opacity:1}
+</style>
+</head>
+<body>
+
+<div id="enter-wrap">
+  <h1>AR 跟踪稳定性测试</h1>
+  <p class="sub">
+    用于验证 <b>ARCore 在「固定支架 + 只旋转」这个场景下跟不跟得住</b>。<br>
+    这是决定能不能走真实 AR 路线的关键一步。
+  </p>
+
+  <div class="card" id="precheck">正在检测 WebXR…</div>
+
+  <video id="cam" playsinline muted></video>
+
+  <div class="btnrow">
+    <button class="ghost" id="camtest">先测相机（确认相机能出图）</button>
+    <button id="enter" disabled>进入 AR</button>
+  </div>
+
+  <div class="card" id="usage">
+    <div style="font-weight:600;margin-bottom:6px">进入后请这样测</div>
+    <div style="color:var(--dim);font-size:13px">
+      1. 把平板装到<b>现场那个固定支架</b>上，对着沙盘<br>
+      2. 一进去，<b>正前方偏下</b>应该出现一块青色的网格地板 + 绿色圆环 + 4 根橙色小柱子<br>
+      3. <b>缓慢左右旋转</b>平板，幅度尽量大，来回 3~4 次<br>
+      4. 停下后点「结束并出报告」<br><br>
+      关键指标是 <b>相机位置波动</b>：支架不动，相机位置就该是恒定的，
+      波动越小说明 ARCore 跟踪越准。<br><br>
+      <b style="color:var(--warn)">如果进去后整屏全黑</b>：先返回点「先测相机」，
+      确认相机本身能出图；然后告诉我们 —— 黑屏是<b>只在截图里</b>，还是
+      <b>眼睛看到的也全黑</b>（AR 的相机画面走的是系统合成层，很多机型截图拍不到它）。<br><br>
+      <b>看不到青色发光板</b> ⇒ WebGL 层没渲染（页面侧问题）；<br>
+      <b>看得到青色发光板、但没有沙盘画面</b> ⇒ ARCore 的相机透视没出图（平台侧问题）。<br><br>
+      <b>位姿采样一直是 0、丢失帧 100%</b> ⇒ ARCore 没有建立跟踪，做
+      <a href="./ar-min.html" style="color:var(--acc)">AR 最小可复现测试</a> 确认（把页面代码从嫌疑里摘出去）。<br><br>
+      退路：<a href="./ar-gyro-demo.html" style="color:var(--acc)">湖南地形 AR 沙盘 Demo（陀螺仪方案，不用 ARCore）</a>
+      　·　<a href="./ar-camera.html" style="color:var(--acc)">相机 + 陀螺仪叠加测试</a>
+    </div>
+  </div>
+
+  <p class="sub" style="margin:2px 0 0">
+    <a href="./index.html" style="color:var(--acc);font-weight:600;text-decoration:none">← 返回测试台</a>
+  </p>
+</div>
+
+<div id="hud">
+  <div class="flash" id="flash"></div>
+  <div class="grid">
+    <div class="row"><span class="k">跟踪状态</span><span class="v" id="h-track">—</span></div>
+    <div class="row"><span class="k">已测</span><span class="v" id="h-time">0.0 s</span></div>
+    <div class="row"><span class="k">相机位置波动</span><span class="v big" id="h-wobble">—</span></div>
+    <div class="row"><span class="k">位置漂移(起→今)</span><span class="v big" id="h-posdrift">—</span></div>
+    <div class="row"><span class="k">朝向 yaw / pitch</span><span class="v" id="h-ang">—</span></div>
+    <div class="row"><span class="k">已放锚点</span><span class="v" id="h-anchors">0</span></div>
+    <div class="row"><span class="k">位姿采样</span><span class="v" id="h-poses">0</span></div>
+    <div class="row"><span class="k">跟踪丢失帧</span><span class="v" id="h-lost">0</span></div>
+    <div class="row"><span class="k">平面检测</span><span class="v" id="h-hit">—</span></div>
+    <div class="row"><span class="k">渲染帧率</span><span class="v" id="h-fps">—</span></div>
+    <div class="row"><span class="k">累计渲染帧</span><span class="v" id="h-frames">0</span></div>
+  </div>
+  <div class="hint">缓慢左右旋转平板 · 点屏幕放置锚点 · 结束后出报告</div>
+  <div class="warnline" id="h-warn" style="display:none"></div>
+</div>
+
+<script type="importmap">
+{ "imports": { "three": "./vendor/three/three.module.js" } }
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+
+const $ = id => document.getElementById(id);
+const R = {};                      // 结果收集
+
+function badge(t, k) { return '<span class="b b-' + k + '">' + t + '</span>'; }
+function row(k, v) { return '<div class="row"><span class="k">' + k + '</span><span class="v">' + v + '</span></div>'; }
+function setRow(id, t) { const el = $(id); if (el) el.textContent = t; }
+function flash(msg) {
+  const el = $('flash'); if (!el) return;
+  el.textContent = msg; el.classList.add('on');
+  clearTimeout(flash._t);
+  flash._t = setTimeout(() => el.classList.remove('on'), 1600);
+}
+
+/* ---------- 能力预检 ----------
+   注意：这里【不能】调用 requestSession！
+   浏览器要求它必须在用户手势（真实点击）里调用，否则抛
+   SecurityError: The requested session requires user activation.
+   真正的会话创建放在「进入 AR」按钮的点击处理里。 */
+(async () => {
+  let html = '';
+  const https = location.protocol === 'https:' || location.hostname === '127.0.0.1';
+  html += row('HTTPS 安全上下文', https ? badge('是', 'ok') : badge('否', 'bad'));
+  html += row('navigator.xr', navigator.xr ? badge('存在', 'ok') : badge('不存在', 'bad'));
+  R.https = https;
+  R.xrPresent = !!navigator.xr;
+
+  if (!navigator.xr) {
+    html += row('结论', badge('本机没有 WebXR，无法进入 AR', 'bad'));
+    $('precheck').innerHTML = html;
+    return;
+  }
+
+  let ok = false;
+  try { ok = await navigator.xr.isSessionSupported('immersive-ar'); }
+  catch (e) { html += row('查询失败', badge(e.name + '：' + (e.message || ''), 'warn')); }
+  R.arSupported = ok;
+  html += row('immersive-ar 声称支持', ok ? badge('是', 'ok') : badge('否', 'bad'));
+
+  if (ok) {
+    html += row('结论', badge('可以尝试进入 AR —— 点下面的按钮（会在点击里真正创建会话）', 'ok'));
+    html += row('说明', '<span style="color:#8fadb5;font-size:12.5px">' +
+      '「声称支持」不等于真能开起来，若点进去仍失败，页面会显示具体错误。</span>');
+    $('enter').disabled = false;
+  } else {
+    html += row('结论', badge('本机不支持 immersive-ar', 'bad'));
+  }
+  $('precheck').innerHTML = html;
+})();
+
+/* WebXR 常见错误的可读解释 */
+function explainXrError(e) {
+  switch (e.name) {
+    case 'SecurityError':
+      return '用户手势缺失，或安全策略拦截。' +
+             '注意 <b>requestSession 必须在真实点击里调用</b>；' +
+             '另请确认是 HTTPS，且页面没有被嵌在跨域 iframe 里。';
+    case 'NotSupportedError':
+      return '设备或浏览器不支持该会话模式。' +
+             '若「声称支持」是 true 却在这里失败，最常见原因是<b>没装 Google Play Services for AR</b>（国行机型常见）。';
+    case 'NotAllowedError':
+      return '被拒绝 —— 通常是<b>相机权限</b>没给。请在浏览器地址栏左侧的权限图标里允许相机，然后重试。';
+    case 'InvalidStateError':
+      return '同一时刻只能有一个 immersive 会话，可能上一个还没结束。请稍等或刷新页面。';
+    default:
+      return '请把这条错误信息发回来。';
+  }
+}
+
+/* ---------- 普通相机预览（独立验证相机硬件 / 权限 / 页面能否出图） ---------- */
+let camStream = null;
+function stopCam() {
+  if (camStream) { camStream.getTracks().forEach(t => t.stop()); camStream = null; }
+  const v = $('cam'); if (v) { v.srcObject = null; v.style.display = 'none'; }
+  const b = $('camtest'); if (b) b.textContent = '先测相机（确认相机能出图）';
+}
+$('camtest').addEventListener('click', async () => {
+  if (camStream) { stopCam(); return; }
+  const v = $('cam');
+  try {
+    camStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: 'environment' } }, audio: false
+    });
+    v.srcObject = camStream;
+    v.style.display = 'block';
+    await v.play();
+    $('camtest').textContent = '关闭相机预览';
+    const tr = camStream.getVideoTracks()[0];
+    R.cameraTestOk = true;
+    R.cameraTrack = tr ? (tr.label + ' | ' + JSON.stringify(tr.getSettings())) : '';
+  } catch (e) {
+    R.cameraTestOk = false;
+    R.cameraTestError = e.name + ': ' + (e.message || '');
+    flash('相机打开失败：' + e.name);
+    setTimeout(() => alert('相机打开失败\n\n' + e.name + ': ' + (e.message || '')), 100);
+  }
+});
+
+/* ---------- Three.js 场景 ---------- */
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.setClearColor(0x000000, 0);          /* 清屏全透明 —— 相机画面才透得出来 */
+renderer.xr.enabled = true;
+renderer.domElement.style.position = 'fixed';
+renderer.domElement.style.inset = '0';
+renderer.domElement.style.display = 'none';
+renderer.domElement.style.zIndex = '10';
+document.body.appendChild(renderer.domElement);
+renderer.setAnimationLoop(render);
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.01, 60);
+
+const world = new THREE.Group();
+scene.add(world);
+
+/* 参考舞台。
+   local 参考空间的坐标原点【就在相机初始位置】，所以把舞台放到
+   「正前方 1.4 m、眼下方 0.6 m」—— 一进 AR 就必定在视野里，
+   肉眼立刻能判断 WebGL 层有没有在出图。 */
+const stage = new THREE.Group();
+stage.position.set(0, -0.6, -1.4);
+world.add(stage);
+
+const grid = new THREE.GridHelper(2.4, 24, 0x4fd1e0, 0x2f7f8f);
+grid.material.transparent = true;
+grid.material.opacity = 0.85;
+stage.add(grid);
+
+/* 地平环（青色） */
+const ring = new THREE.Mesh(
+  new THREE.TorusGeometry(0.32, 0.012, 10, 64),
+  new THREE.MeshBasicMaterial({ color: 0x3ddc97 })
+);
+ring.rotation.x = -Math.PI / 2;
+ring.position.y = 0.004;
+stage.add(ring);
+
+/* 竖直圆环 —— 正对相机（TorusGeometry 默认就在 XY 平面，朝 ±Z） */
+const vring = new THREE.Mesh(
+  new THREE.TorusGeometry(0.24, 0.011, 10, 56),
+  new THREE.MeshBasicMaterial({ color: 0x4fd1e0 })
+);
+vring.position.set(0, 0.32, 0);
+stage.add(vring);
+
+/* 4 根橙色标杆 */
+const poleMat = new THREE.MeshBasicMaterial({ color: 0xffb020 });
+for (let i = 0; i < 4; i++) {
+  const a = i * Math.PI / 2 + Math.PI / 4;
+  const x = Math.cos(a) * 0.95, z = Math.sin(a) * 0.95;
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.009, 0.009, 0.6, 6), poleMat);
+  pole.position.set(x, 0.3, z);
+  stage.add(pole);
+}
+
+stage.add(new THREE.AxesHelper(0.25));
+
+/* 兜底可视面板 —— 一块会发光的青色矩形，放在舞台正后方。
+   它存在的唯一目的：把「WebGL 层到底有没有在渲染」变成一个不可能看错的问题。
+   - 看得见这块板子 ⇒ WebGL 层正常，黑屏是相机透视没出图（ARCore 侧）
+   - 连板子都看不见 ⇒ 渲染循环 / 合成层有问题（页面侧） */
+const backdrop = new THREE.Mesh(
+  new THREE.PlaneGeometry(1.6, 1.0),
+  new THREE.MeshBasicMaterial({
+    color: 0x14c8e0, transparent: true, opacity: 0.5, side: THREE.DoubleSide
+  })
+);
+backdrop.position.set(0, 0.05, -0.6);
+stage.add(backdrop);
+
+/* 命中测试用的准星 */
+const reticle = new THREE.Mesh(
+  new THREE.RingGeometry(0.045, 0.062, 32).rotateX(-Math.PI / 2),
+  new THREE.MeshBasicMaterial({ color: 0x4fd1e0, transparent: true, opacity: 0.9 })
+);
+reticle.visible = false;
+reticle.matrixAutoUpdate = false;
+scene.add(reticle);
+
+/* 已放置的锚点 */
+const anchors = [];
+function addAnchor(pos, quat) {
+  const m = new THREE.Mesh(
+    new THREE.TorusGeometry(0.05, 0.008, 8, 28),
+    new THREE.MeshBasicMaterial({ color: 0x3ddc97 })
+  );
+  m.position.copy(pos);
+  if (quat) m.quaternion.copy(quat);
+  scene.add(m);
+  anchors.push(m);
+  return m;
+}
+
+/* ---------- 会话状态 ---------- */
+let session = null, refSpace = null, hitTestSource = null, viewerSpace = null, hitTestError = null;
+let sampling = false, t0 = 0;
+let posMin = null, posMax = null, posFirst = null, posLast = null;
+let poseN = 0, lostFrames = 0, totalFrames = 0, hitFrames = 0;
+let fpsFrames = 0, fpsT0 = 0, fps = 0, hudT0 = 0;
+
+const _p = new THREE.Vector3(), _q = new THREE.Quaternion(), _m = new THREE.Matrix4();
+const _e = new THREE.Euler();
+
+function resetStats() {
+  sampling = true; t0 = performance.now();
+  posMin = new THREE.Vector3(Infinity, Infinity, Infinity);
+  posMax = new THREE.Vector3(-Infinity, -Infinity, -Infinity);
+  posFirst = null; posLast = null;
+  poseN = 0; lostFrames = 0; totalFrames = 0; hitFrames = 0;
+  fpsFrames = 0; fpsT0 = performance.now(); fps = 0; hudT0 = 0;
+  anchors.forEach(a => scene.remove(a)); anchors.length = 0;
+  $('h-warn').style.display = 'none';
+  flash('统计已重新开始');
+}
+
+function recordPose(pos) {
+  if (!sampling) return;
+  poseN++;
+  if (!posFirst) posFirst = pos.clone();
+  posLast = pos.clone();
+  posMin.min(pos); posMax.max(pos);
+}
+
+function poseWobble() {
+  if (!posMin || poseN < 2) return null;
+  return posMax.clone().sub(posMin).length();      /* 三个轴波动量的合成 */
+}
+
+function posDrift() {
+  if (!posFirst || !posLast) return null;
+  return posLast.clone().sub(posFirst).length();
+}
+
+function yawPitch(quat) {
+  _e.setFromQuaternion(quat, 'YXZ');
+  return { yaw: THREE.MathUtils.radToDeg(_e.y), pitch: THREE.MathUtils.radToDeg(_e.x) };
+}
+
+/* ---------- HUD（限速 5 Hz） ---------- */
+function updateHud(now) {
+  if (now - hudT0 < 200) return;
+  hudT0 = now;
+  if (!sampling) return;
+
+  /* 跟踪状态 —— 由真实位姿数据驱动，不再无条件写「正常」 */
+  const el = $('h-track');
+  if (el) {
+    const secs = t0 ? (now - t0) / 1000 : 0;
+    if (poseN === 0) {
+      el.innerHTML = badge('无位姿 ' + secs.toFixed(0) + 's', 'bad');
+    } else if (totalFrames && lostFrames / totalFrames > 0.3) {
+      el.innerHTML = badge('跟踪不稳 ' + (lostFrames / totalFrames * 100).toFixed(0) + '%', 'warn');
+    } else {
+      el.innerHTML = badge('跟踪中', 'ok');
+    }
+  }
+
+  setRow('h-time', ((now - t0) / 1000).toFixed(1) + ' s');
+  const w = poseWobble();
+  setRow('h-wobble', w === null ? '—' : (w * 1000).toFixed(1) + ' mm');
+  const d = posDrift();
+  setRow('h-posdrift', d === null ? '—' : (d * 1000).toFixed(1) + ' mm');
+  const ap = yawPitch(_q);
+  setRow('h-ang', ap.yaw.toFixed(1) + '° / ' + ap.pitch.toFixed(1) + '°');
+  setRow('h-anchors', String(anchors.length));
+  setRow('h-poses', String(poseN));
+  setRow('h-lost', lostFrames + (totalFrames ? ' (' + (lostFrames / totalFrames * 100).toFixed(1) + '%)' : ''));
+  setRow('h-hit', hitTestSource ? (hitFrames > 0 ? '有平面' : '无平面') : '未启用');
+  setRow('h-fps', fps ? fps.toFixed(0) : '—');
+  setRow('h-frames', String(totalFrames));
+
+  /* 5 秒还拿不到任何位姿 → 明确报警 */
+  const warn = $('h-warn');
+  if (warn) {
+    const secs = t0 ? (now - t0) / 1000 : 0;
+    if (poseN === 0 && secs > 5) {
+      warn.style.display = 'block';
+      warn.textContent = '⚠ 已 ' + secs.toFixed(0) + ' 秒没有任何位姿 —— 相机画面 / 跟踪可能是黑的';
+    } else if (warn.style.display === 'block') {
+      warn.style.display = 'none';
+    }
+  }
+}
+
+/* ---------- 渲染循环 ---------- */
+function render(t, frame) {
+  totalFrames++;
+
+  /* 帧率必须在每一帧里累计 —— 放进被限速的 updateHud 里会被封顶在 5 fps */
+  fpsFrames++;
+  const _now = performance.now();
+  if (_now - fpsT0 >= 1000) { fps = fpsFrames * 1000 / (_now - fpsT0); fpsFrames = 0; fpsT0 = _now; }
+
+  if (frame && session && refSpace) {
+    const pose = frame.getViewerPose(refSpace);
+    if (pose) {
+      _m.fromArray(pose.transform.matrix);
+      _p.setFromMatrixPosition(_m);
+      _q.setFromRotationMatrix(_m);
+      recordPose(_p);
+    } else {
+      lostFrames++;
+    }
+
+    /* 命中测试 → 更新准星 */
+    if (hitTestSource) {
+      try {
+        const hits = frame.getHitTestResults(hitTestSource);
+        if (hits.length) {
+          const hp = hits[0].getPose(refSpace);
+          if (hp) {
+            reticle.visible = true;
+            reticle.matrix.fromArray(hp.transform.matrix);
+            hitFrames++;
+          } else { reticle.visible = false; }
+        } else { reticle.visible = false; }
+      } catch (e) { reticle.visible = false; }
+    }
+  }
+
+  updateHud(performance.now());
+  renderer.render(scene, camera);
+}
+
+/* ---------- 进入 / 退出 ---------- */
+function enterBtn() { return $('enter') || $('reenter'); }
+function restoreBg() {
+  document.documentElement.style.background = '';
+  document.body.style.background = '';
+}
+
+async function enterAR() {
+  const b = enterBtn(); if (b) b.disabled = true;
+  stopCam();                                   /* ARCore 要独占相机 */
+
+  try {
+    session = await navigator.xr.requestSession('immersive-ar', {
+      requiredFeatures: ['hit-test'],
+      optionalFeatures: ['local-floor', 'dom-overlay'],
+      domOverlay: { root: $('hud') }
+    });
+
+    /* 先让 canvas 可见，再 setSession */
+    renderer.domElement.style.display = 'block';
+    /* AR 期间把页面底色设为透明 —— 排除「不透明底色盖住相机层」这个可能 */
+    document.documentElement.style.background = 'transparent';
+    document.body.style.background = 'transparent';
+
+    renderer.xr.setReferenceSpaceType('local');
+    await renderer.xr.setSession(session);
+
+    refSpace = renderer.xr.getReferenceSpace();
+    if (!refSpace) refSpace = await session.requestReferenceSpace('local');
+
+    try {
+      viewerSpace = await session.requestReferenceSpace('viewer');
+      hitTestSource = await session.requestHitTestSource({ space: viewerSpace });
+    } catch (e) {
+      hitTestError = e.name + ': ' + (e.message || '');
+      hitTestSource = null;
+    }
+
+    session.addEventListener('select', onSelect);
+    session.addEventListener('end', onEnd);
+
+    R.domOverlay = !!(session.domOverlayState);
+    R.hitTestError = hitTestError;
+
+    $('enter-wrap').style.display = 'none';
+    $('hud').classList.add('on');
+    resetStats();
+  } catch (e) {
+    renderer.domElement.style.display = 'none';
+    restoreBg();
+    R.enterError = e.name + ': ' + e.message;
+    R.enterErrorHint = explainXrError(e);
+    $('precheck').innerHTML =
+      row('进入 AR', badge('失败：' + e.name, 'bad')) +
+      row('错误信息', e.message || '（无）') +
+      row('可能原因', explainXrError(e));
+    if (b) b.disabled = false;
+  }
+}
+
+function onSelect() {
+  if (!reticle.visible) { flash('没检测到平面，先对准沙盘表面'); return; }
+  const pos = new THREE.Vector3().setFromMatrixPosition(reticle.matrix);
+  const quat = new THREE.Quaternion().setFromRotationMatrix(reticle.matrix);
+  addAnchor(pos, quat);
+  flash('已放置锚点 ' + anchors.length + ' 个');
+}
+
+function onEnd() {
+  sampling = false;
+  hitTestSource = null; session = null;
+  renderer.domElement.style.display = 'none';
+  restoreBg();
+  $('hud').classList.remove('on');
+  $('enter-wrap').style.display = 'flex';
+  buildReport();
+}
+
+$('enter').addEventListener('click', enterAR);
+
+/* ---------- 报告 ---------- */
+function buildReport() {
+  const wob = poseWobble();
+  const drift = posDrift();
+  const dur = t0 ? (performance.now() - t0) / 1000 : 0;
+
+  R.durationSec = Number(dur.toFixed(1));
+  R.poseSamples = poseN;
+  R.lostFrames = lostFrames;
+  R.totalFrames = totalFrames;
+  R.trackingLossRate = totalFrames ? Number((lostFrames / totalFrames).toFixed(4)) : null;
+  R.avgFps = fps ? Number(fps.toFixed(1)) : null;
+  R.hitFrames = hitFrames;
+  R.posWobbleMm = wob === null ? null : Number((wob * 1000).toFixed(1));
+  R.posDriftMm = drift === null ? null : Number((drift * 1000).toFixed(1));
+  if (posMin && poseN > 1) {
+    const d = posMax.clone().sub(posMin);
+    R.posRangeMm = {
+      x: Number((d.x * 1000).toFixed(1)),
+      y: Number((d.y * 1000).toFixed(1)),
+      z: Number((d.z * 1000).toFixed(1)),
+    };
+  }
+  R.anchorCount = anchors.length;
+  R.domOverlaySupported = R.domOverlay;
+
+  /* 判定：支架不动 ⇒ 相机位置应恒定 */
+  let verdict = '—', cls = 'idle';
+  if (poseN === 0) {
+    verdict = '完全没有拿到位姿 —— AR 会话开了，但相机/跟踪没有出数据。' +
+              '请先确认「先测相机」能出图，再把这行结论发回来。';
+    cls = 'bad';
+  } else if (R.posWobbleMm === null) { verdict = '样本不足'; }
+  else if (R.posWobbleMm < 10) { verdict = '极好：位置几乎不动（< 10 mm）'; cls = 'ok'; }
+  else if (R.posWobbleMm < 30) { verdict = '良好（< 30 mm）'; cls = 'ok'; }
+  else if (R.posWobbleMm < 80) { verdict = '可用，但叠加会有可见抖动（< 80 mm）'; cls = 'warn'; }
+  else { verdict = '较差：位置漂移明显，纯 ARCore 方案需配合固定基准'; cls = 'bad'; }
+
+  const wrap = $('enter-wrap');
+  wrap.innerHTML =
+    '<h1>测试结果</h1>' +
+    '<div class="card">' +
+      row('相机位置波动（越小越好）', badge((R.posWobbleMm ?? '—') + ' mm', cls)) +
+      row('位置漂移（起点→终点）', (R.posDriftMm ?? '—') + ' mm') +
+      (R.posRangeMm ? row('各轴波动 X / Y / Z', R.posRangeMm.x + ' / ' + R.posRangeMm.y + ' / ' + R.posRangeMm.z + ' mm') : '') +
+      row('跟踪丢失帧占比', R.trackingLossRate === null ? '—' :
+        badge((R.trackingLossRate * 100).toFixed(2) + '%',
+              R.trackingLossRate < 0.01 ? 'ok' : (R.trackingLossRate < 0.05 ? 'warn' : 'bad'))) +
+      row('位姿采样数 / 时长 / 帧率', R.poseSamples + ' / ' + R.durationSec + ' s / ' + (R.avgFps ?? '—') + ' fps') +
+      row('检测到平面的帧数', String(R.hitFrames)) +
+      row('放置锚点数', String(R.anchorCount)) +
+      row('dom-overlay 支持', R.domOverlaySupported ? badge('是', 'ok') : badge('否（HUD 无法显示）', 'warn')) +
+      (R.hitTestError ? row('命中测试错误', badge(R.hitTestError, 'warn')) : '') +
+    '</div>' +
+    '<div class="card"><div style="font-weight:600;margin-bottom:6px">结论</div>' +
+      '<div>' + verdict + '</div>' +
+      '<div style="color:var(--dim);font-size:12.5px;margin-top:8px">' +
+      '说明：平板装在固定支架上时相机位置本应恒定，所以「位置波动」直接反映 ARCore 的跟踪误差。' +
+      '若波动偏大，通常是因为<b>只旋转、没有位移</b>——相机缺少视差，ARCore 难以约束深度。' +
+      '这种情况下可以靠<b>沙盘边框贴 AprilTag / 已知标记</b>做一次配准把误差拉回来。</div>' +
+    '</div>' +
+    '<div class="btnrow">' +
+      '<button id="reenter">再次进入 AR</button>' +
+      '<button class="ghost" id="report">生成报告文本</button>' +
+      '<button class="ghost" id="copy">复制到剪贴板</button>' +
+    '</div>' +
+    '<pre id="out" style="max-width:560px;width:100%;text-align:left;background:var(--panel);' +
+      'border:1px solid var(--line);border-radius:10px;padding:12px;overflow:auto;' +
+      'font-size:11.5px;max-height:38vh;white-space:pre-wrap">点击「生成报告文本」…</pre>';
+
+  $('reenter').addEventListener('click', () => {
+    wrap.innerHTML =
+      '<h1>AR 跟踪稳定性测试</h1>' +
+      '<p class="sub">再次进入前，请把平板重新装回固定支架上。</p>' +
+      '<div class="btnrow"><button id="enter">进入 AR</button></div>';
+    $('enter').addEventListener('click', enterAR);
+  });
+
+  $('report').addEventListener('click', () => {
+    $('out').textContent = JSON.stringify(R, null, 2);
+  });
+  $('copy').addEventListener('click', async () => {
+    try { await navigator.clipboard.writeText($('out').textContent); $('copy').textContent = '已复制 ✓'; }
+    catch (e) { $('copy').textContent = '复制失败，请长按手动复制'; }
+    setTimeout(() => { $('copy').textContent = '复制到剪贴板'; }, 2000);
+  });
+}
+
+/* ---------- 尺寸 ---------- */
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+</script>
+</body>
+</html>

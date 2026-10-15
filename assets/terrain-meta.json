@@ -1,0 +1,7 @@
+{
+  "width": 256,
+  "height": 292,
+  "elevation_min_m": 0.0,
+  "elevation_max_m": 2076.0,
+  "source": "../dem/数据说明.json"
+}
