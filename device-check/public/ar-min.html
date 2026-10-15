@@ -1,0 +1,275 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>AR 最小可复现测试 · 湖南地形沙盘</title>
+<!-- 空 favicon：避免浏览器自动请求 /favicon.ico 产生 404，
+     那条 404 会污染自动化回归里的「控制台零报错」判定。 -->
+<link rel="icon" href="data:,">
+<style>
+  :root{
+    --bg:#0b1418; --panel:#12232a; --line:#1e3a44; --fg:#e8f4f6; --dim:#8fadb5;
+    --ok:#3ddc97; --warn:#ffb020; --bad:#ff5c5c; --acc:#4fd1e0;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);
+    font:14px/1.5 -apple-system,"PingFang SC","Microsoft YaHei",system-ui,sans-serif}
+  body{overflow:hidden}
+  canvas{display:block;touch-action:none}
+
+  #wrap{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;
+    justify-content:center;gap:14px;padding:22px;text-align:center;z-index:20;
+    background:var(--bg);overflow:auto}
+  h1{font-size:19px;margin:0}
+  .sub{color:var(--dim);font-size:13px;max-width:600px;margin:0}
+  button{background:var(--acc);color:#04222a;border:0;border-radius:10px;
+    padding:12px 20px;font-size:14.5px;font-weight:600;cursor:pointer}
+  button.ghost{background:transparent;color:var(--fg);border:1px solid var(--line);font-weight:400}
+  button:disabled{opacity:.5}
+  .btnrow{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;
+    padding:12px 14px;text-align:left;max-width:600px;width:100%}
+  .row{display:flex;justify-content:space-between;gap:12px;padding:3px 0;font-size:13px}
+  .row .k{color:var(--dim);flex:0 0 auto}
+  .row .v{text-align:right;font-variant-numeric:tabular-nums}
+  .b{display:inline-block;padding:1px 8px;border-radius:999px;font-size:12px;font-weight:600}
+  .b-ok{background:rgba(61,220,151,.16);color:var(--ok)}
+  .b-warn{background:rgba(255,176,32,.16);color:var(--warn)}
+  .b-bad{background:rgba(255,92,92,.16);color:var(--bad)}
+  .b-idle{background:rgba(143,173,181,.14);color:var(--dim)}
+
+  #hud{position:fixed;left:0;right:0;top:0;padding:10px 12px;display:none;z-index:30;
+    pointer-events:none;background:linear-gradient(to bottom,rgba(4,14,18,.92),rgba(4,14,18,0))}
+  #hud.on{display:block}
+  #hud .line{max-width:640px;margin:0 auto;font-size:13px;font-weight:600;
+    font-variant-numeric:tabular-nums;text-align:center;color:#04222a}
+  #hud .line span{display:inline-block;background:rgba(79,209,224,.92);
+    padding:5px 12px;border-radius:999px;margin:2px}
+</style>
+</head>
+<body>
+
+<div id="wrap">
+  <h1>AR 最小可复现测试</h1>
+  <p class="sub">
+    把 WebXR 的用法剥到<b>只剩最必要的部分</b>：一个发光立方体 + 一块网格，
+    不调用命中测试、不申请任何额外特性。<br>
+    用来回答一个问题：<b>黑屏到底是 ARCore 的问题，还是页面代码的问题。</b>
+  </p>
+
+  <div class="card" id="pre">正在检测 WebXR…</div>
+
+  <div class="btnrow">
+    <button id="go-plain" disabled>① 最小 AR<br><span style="font-weight:400;font-size:12px">不用 dom-overlay</span></button>
+    <button id="go-overlay" class="ghost" disabled>② 带 dom-overlay<br><span style="font-weight:400;font-size:12px">顶部显示实时计数</span></button>
+  </div>
+
+  <div class="card" id="res" style="display:none"></div>
+
+  <div class="card">
+    <div style="font-weight:600;margin-bottom:6px">怎么判断</div>
+    <div style="color:var(--dim);font-size:13px">
+      点进去后，<b>正前方偏下</b>应该出现一个<b>青色发光立方体</b>和一块网格地板。<br>
+      12 秒后会自动退出并给出结论。<br><br>
+      <b>看到立方体</b> ⇒ ARCore 的相机透视是好的，问题在别处；<br>
+      <b>全黑、什么也看不到</b> ⇒ ARCore 在这台机器上根本不工作，与页面代码无关。
+    </div>
+  </div>
+
+  <p class="sub" style="margin:2px 0 0">
+    <a href="./index.html" style="color:var(--acc);font-weight:600;text-decoration:none">← 返回测试台</a>
+  </p>
+</div>
+
+<div id="hud">
+  <div class="line">
+    <span id="h-pose">位姿 0</span>
+    <span id="h-lost">丢失 0</span>
+    <span id="h-frames">帧 0</span>
+  </div>
+</div>
+
+<script type="importmap">
+{ "imports": { "three": "./vendor/three/three.module.js" } }
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+
+const $ = id => document.getElementById(id);
+const R = {};
+
+function badge(t, k) { return '<span class="b b-' + k + '">' + t + '</span>'; }
+function row(k, v) { return '<div class="row"><span class="k">' + k + '</span><span class="v">' + v + '</span></div>'; }
+
+/* ---------- 预检（只读） ---------- */
+(async () => {
+  let html = '';
+  const https = location.protocol === 'https:' || location.hostname === '127.0.0.1';
+  html += row('HTTPS 安全上下文', https ? badge('是', 'ok') : badge('否', 'bad'));
+  html += row('navigator.xr', navigator.xr ? badge('存在', 'ok') : badge('不存在', 'bad'));
+  R.https = https;
+  if (!navigator.xr) { $('pre').innerHTML = html; return; }
+
+  let ok = false;
+  try { ok = await navigator.xr.isSessionSupported('immersive-ar'); }
+  catch (e) { html += row('查询失败', badge(e.name, 'warn')); }
+  R.arSupported = ok;
+  html += row('immersive-ar 声称支持', ok ? badge('是', 'ok') : badge('否', 'bad'));
+  $('pre').innerHTML = html;
+  if (ok) { $('go-plain').disabled = false; $('go-overlay').disabled = false; }
+})();
+
+/* ---------- 场景：能多简单就多简单 ---------- */
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.setClearColor(0x000000, 0);
+renderer.xr.enabled = true;
+renderer.domElement.style.position = 'fixed';
+renderer.domElement.style.inset = '0';
+renderer.domElement.style.zIndex = '1';
+renderer.domElement.style.display = 'none';
+document.body.appendChild(renderer.domElement);
+renderer.setAnimationLoop(render);
+
+const scene = new THREE.Scene();
+const cam = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.01, 30);
+
+/* 亮到不可能看错的立方体：正前方 1.2 m、眼下方 0.25 m */
+const cube = new THREE.Mesh(
+  new THREE.BoxGeometry(0.3, 0.3, 0.3),
+  new THREE.MeshBasicMaterial({ color: 0x00ffcc })
+);
+cube.position.set(0, -0.25, -1.2);
+scene.add(cube);
+
+/* 地面网格：眼下方 1.0 m */
+const grid = new THREE.GridHelper(6, 60, 0x4fd1e0, 0x1e5a66);
+grid.position.y = -1.0;
+grid.material.transparent = true;
+grid.material.opacity = 0.7;
+scene.add(grid);
+
+/* ---------- 会话 ---------- */
+let session = null, refSpace = null;
+let poseN = 0, lost = 0, frames = 0, everPose = false, t0 = 0, withOverlay = false;
+
+function render(t, frame) {
+  frames++;
+  if (frame && session && refSpace) {
+    const p = frame.getViewerPose(refSpace);
+    if (p) { poseN++; everPose = true; } else { lost++; }
+  }
+  const hp = $('h-pose');
+  if (hp) {
+    hp.textContent = '位姿 ' + poseN;
+    $('h-lost').textContent = '丢失 ' + lost;
+    $('h-frames').textContent = '帧 ' + frames;
+  }
+  renderer.render(scene, cam);
+}
+
+async function run(overlay) {
+  withOverlay = overlay;
+  $('go-plain').disabled = true;
+  $('go-overlay').disabled = true;
+
+  const opts = overlay
+    ? { optionalFeatures: ['dom-overlay'], domOverlay: { root: $('hud') } }
+    : {};
+
+  try {
+    session = await navigator.xr.requestSession('immersive-ar', opts);
+  } catch (e) {
+    R.enterError = e.name + ': ' + (e.message || '');
+    $('res').style.display = 'block';
+    $('res').innerHTML = row('进入 AR', badge('失败：' + e.name, 'bad')) +
+      row('错误信息', e.message || '（无）');
+    $('go-plain').disabled = false; $('go-overlay').disabled = false;
+    return;
+  }
+
+  renderer.domElement.style.display = 'block';
+  document.documentElement.style.background = 'transparent';
+  document.body.style.background = 'transparent';
+  if (overlay) $('hud').classList.add('on');
+
+  renderer.xr.setReferenceSpaceType('local');
+  await renderer.xr.setSession(session);
+
+  refSpace = renderer.xr.getReferenceSpace();
+  if (!refSpace) {
+    try { refSpace = await session.requestReferenceSpace('local'); }
+    catch (e) { R.refSpaceError = e.name + ': ' + (e.message || ''); }
+  }
+
+  poseN = 0; lost = 0; frames = 0; everPose = false; t0 = performance.now();
+  session.addEventListener('end', onEnd);
+  setTimeout(async () => { try { await session.end(); } catch (e) {} }, 12000);
+}
+
+async function onEnd() {
+  const secs = t0 ? (performance.now() - t0) / 1000 : 0;
+  renderer.domElement.style.display = 'none';
+  document.documentElement.style.background = '';
+  document.body.style.background = '';
+  $('hud').classList.remove('on');
+  session = null;
+
+  R.withOverlay = withOverlay;
+  R.durationSec = Number(secs.toFixed(1));
+  R.totalFrames = frames;
+  R.poseSamples = poseN;
+  R.lostFrames = lost;
+  R.everPose = everPose;
+  R.avgFps = secs > 0 ? Number((frames / secs).toFixed(1)) : null;
+  R.refSpaceError = R.refSpaceError || null;
+
+  let verdict, cls;
+  if (frames === 0) {
+    verdict = '渲染循环完全没有跑起来（0 帧）—— 这是页面侧的问题。';
+    cls = 'bad';
+  } else if (everPose) {
+    verdict = 'ARCore 正常：拿到过 ' + poseN + ' 次位姿（' +
+      (poseN / frames * 100).toFixed(1) + '% 的帧）。' +
+      '说明相机透视与跟踪都是好的，之前 ar.html 的黑屏要在页面代码里找原因。';
+    cls = 'ok';
+  } else {
+    verdict = 'ARCore 在这台机器上不工作：' + frames + ' 帧里一次位姿都没有拿到。' +
+      '页面代码已经剥到最简，所以这是 <b>ARCore 运行时本身</b>的问题 —— ' +
+      '最常见的原因是「Google Play Services for AR」缺失、版本不匹配或未获相机权限。';
+    cls = 'bad';
+  }
+
+  $('res').style.display = 'block';
+  $('res').innerHTML =
+    row('测试模式', withOverlay ? '带 dom-overlay' : '最小（不用 dom-overlay）') +
+    row('时长 / 总帧数 / 平均帧率', R.durationSec + ' s / ' + frames + ' / ' + (R.avgFps ?? '—') + ' fps') +
+    row('拿到位姿的帧数', everPose ? badge(poseN + '（' + (poseN / frames * 100).toFixed(1) + '%）', 'ok')
+                                   : badge('0', 'bad')) +
+    row('丢失位姿的帧数', String(lost)) +
+    (R.refSpaceError ? row('参考空间错误', badge(R.refSpaceError, 'bad')) : '') +
+    '<div style="margin-top:8px;font-size:13px">' + verdict + '</div>' +
+    '<div style="margin-top:10px"><button class="ghost" id="again">再测一次</button></div>';
+
+  $('again').addEventListener('click', () => {
+    $('res').style.display = 'none';
+    $('go-plain').disabled = false;
+    $('go-overlay').disabled = false;
+  });
+}
+
+$('go-plain').addEventListener('click', () => run(false));
+$('go-overlay').addEventListener('click', () => run(true));
+
+addEventListener('resize', () => {
+  cam.aspect = innerWidth / innerHeight;
+  cam.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+</script>
+</body>
+</html>

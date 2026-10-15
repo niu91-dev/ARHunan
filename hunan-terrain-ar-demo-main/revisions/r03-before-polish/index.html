@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M16 2 30 16 16 30 2 16Z' fill='%230c1917' stroke='%2370e2be' stroke-width='2'/%3E%3C/svg%3E" />
+  <title>湖南地形全息扫描 · 沙盘视角 Demo</title>
+  <link rel="stylesheet" href="./style.css" />
+  <link rel="stylesheet" href="./sites.css" />
+  <script type="importmap">
+    {"imports":{"three":"./vendor/three/three.module.js"}}
+  </script>
+</head>
+<body>
+  <main class="app">
+    <section class="stage" aria-label="湖南地形三维沙盘">
+      <div id="scene"></div>
+      <div id="site-markers" class="site-markers" aria-label="地形地点锚点"></div>
+      <div id="site-story" class="site-story" aria-live="polite"><svg class="story-links" aria-hidden="true"></svg><div class="story-cards"></div></div>
+      <div class="stage-top">
+        <div class="brand"><span class="brand-mark"></span><div><strong>HUNAN / TERRAIN LAB</strong><small>物理沙盘 · Pad 观察位模拟</small></div></div>
+        <div class="live"><span></span> LIVE VIEW</div>
+      </div>
+      <div class="reticle" aria-hidden="true"><span></span></div>
+      <div id="site-callout" class="site-callout" hidden><span id="callout-mode"></span><strong id="callout-name"></strong><small id="callout-anchor"></small></div>
+      <div class="stage-bottom"><span id="hint">拖动改变视线 · 点击地形触发扫描</span><span id="scan-readout">待机扫描中</span></div>
+      <div id="error" class="error" hidden></div>
+    </section>
+
+    <aside class="panel">
+      <header class="panel-header"><span class="eyebrow">INTERACTIVE DEMO / 01</span><h1>湖南地形<br><em>全息扫描</em></h1><p>站在沙盘边缘，从支架上的 Pad 视角观察真实高程地形。</p></header>
+
+      <section class="control-section">
+        <div class="section-title"><span>01</span><h2>支架位置</h2></div>
+        <div class="rail-diagram" aria-hidden="true"><div class="rail-map">地形沙盘</div><div class="rail-line"></div><div id="pad-icon" class="pad-icon"></div><span class="rail-caption">边缘支架 / PAD</span></div>
+        <label class="slider-label" for="height"><span>安装高度</span><output id="height-value">1.8 m</output></label><input id="height" type="range" min="1.2" max="5.5" step="0.1" value="1.8">
+        <label class="slider-label" for="distance"><span>离中心距离</span><output id="distance-value">4.4 m</output></label><input id="distance" type="range" min="4.2" max="9.5" step="0.1" value="4.4">
+        <label class="slider-label" for="zoom"><span>镜头缩放</span><output id="zoom-value">2.0×</output></label><input id="zoom" type="range" min="1" max="3.5" step="0.1" value="2">
+        <label class="slider-label" for="lateral"><span>沿边左右位置</span><output id="lateral-value">0.0 m</output></label><input id="lateral" type="range" min="-2.0" max="2.0" step="0.1" value="0">
+      </section>
+
+      <section class="control-section">
+        <div class="section-title"><span>02</span><h2>Pad 视线</h2></div>
+        <div class="move-row"><div class="dpad"><button data-dir="up" aria-label="视线上移">↑</button><button data-dir="left" aria-label="视线左移">←</button><button data-dir="reset" aria-label="视线复位">⌖</button><button data-dir="right" aria-label="视线右移">→</button><button data-dir="down" aria-label="视线下移">↓</button></div><p>拖动画面或按方向键<br>视角在限位范围内移动</p></div>
+        <div class="angle-readout"><span>水平 <b id="yaw-value">0°</b></span><span>垂直 <b id="pitch-value">0°</b></span></div>
+      </section>
+
+      <section class="control-section scan-section">
+        <div class="section-title"><span>03</span><h2>扫描模式</h2></div>
+        <div class="toggle-row"><div><strong>待机随机扫光</strong><small>稀疏点云沿地形柔和显现</small></div><label class="switch"><input id="idle-toggle" type="checkbox" checked><span></span></label></div>
+        <button id="center-scan" class="scan-button"><span>◎</span> 从中心发起扫描</button>
+        <p class="scan-note">点击地形触发扫描；转动 Pad，让中心瞄准点对准地点锚点。</p>
+      </section>
+
+      <section class="control-section places-section">
+        <div class="section-title"><span>04</span><h2>地形锚点 <small>11 处</small></h2></div>
+        <p class="places-hint">坐标按真实经纬度投到 DEM；范围和河流采用代表性位置。</p>
+        <div id="site-list" class="site-list"></div>
+        <article id="site-detail" class="site-detail" aria-live="polite"><p class="detail-empty">选择地形上的光点，查看地点档案。</p></article>
+      </section>
+
+      <footer class="panel-footer"><span>DEM 2027 × 2318</span><span>MAPZEN / HUNAN</span></footer>
+    </aside>
+  </main>
+  <script type="module" src="./app.js"></script>
+</body>
+</html>

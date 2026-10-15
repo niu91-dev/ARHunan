@@ -1,0 +1,3233 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>湖南地形 AR 沙盘 · 陀螺仪方案 Demo（横屏 · 不依赖 ARCore）</title>
+<!-- 空 favicon：避免浏览器自动请求 /favicon.ico 产生 404，
+     那条 404 会污染自动化回归里的「控制台零报错」判定。 -->
+<link rel="icon" href="data:,">
+<style>
+  :root{
+    --bg:#0b1418; --panel:#12232a; --line:#1e3a44; --fg:#e8f4f6; --dim:#8fadb5;
+    --ok:#3ddc97; --warn:#ffb020; --bad:#ff5c5c; --acc:#4fd1e0;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);
+    font:14px/1.5 -apple-system,"PingFang SC","Microsoft YaHei",system-ui,sans-serif}
+  body{overflow:hidden}
+  canvas{display:block;touch-action:none}
+
+  #cam{position:fixed;inset:0;width:100%;height:100%;object-fit:cover;
+    background:#000;z-index:0;display:none}
+  #gl{position:fixed;inset:0;z-index:10;display:none}
+
+  /* ---------- 竖屏拦截：只在 AR 运行中生效，纯 CSS，无需 JS ---------- */
+  #rotate{position:fixed;inset:0;z-index:60;display:none;flex-direction:column;
+    align-items:center;justify-content:center;gap:18px;background:var(--bg);
+    text-align:center;padding:24px}
+  @media (orientation: portrait){ body.ar-active #rotate{display:flex} }
+  #rotate .dev{width:88px;height:52px;border:2.5px solid var(--acc);border-radius:9px;
+    animation:rot 2.2s ease-in-out infinite}
+  @keyframes rot{0%,35%{transform:rotate(0deg)}65%,100%{transform:rotate(-90deg)}}
+  #rotate h2{font-size:17px;margin:0;font-weight:600}
+  #rotate p{color:var(--dim);font-size:13px;margin:0;max-width:420px}
+
+  /* ---------- 启动页 ---------- */
+  #start-wrap{position:fixed;inset:0;z-index:40;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;gap:12px;padding:18px 22px;text-align:center;
+    background:var(--bg);overflow:auto}
+  h1{font-size:19px;margin:0}
+  .sub{color:var(--dim);font-size:13px;max-width:660px;margin:0}
+  button{background:var(--acc);color:#04222a;border:0;border-radius:10px;
+    padding:11px 18px;font-size:14px;font-weight:600;cursor:pointer;white-space:nowrap}
+  button.ghost{background:transparent;color:var(--fg);border:1px solid var(--line);font-weight:400}
+  button.sm{padding:8px 13px;font-size:13px}
+  button:disabled{opacity:.5}
+  .btnrow{display:flex;gap:9px;flex-wrap:wrap;justify-content:center;align-items:center}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;
+    padding:11px 13px;text-align:left;max-width:660px;width:100%}
+  .row{display:flex;justify-content:space-between;gap:12px;padding:2px 0;font-size:13px}
+  .row .k{color:var(--dim);flex:0 0 auto}
+  .row .v{text-align:right;font-variant-numeric:tabular-nums}
+  .b{display:inline-block;padding:1px 8px;border-radius:999px;font-size:12px;font-weight:600}
+  .b-ok{background:rgba(61,220,151,.16);color:var(--ok)}
+  .b-warn{background:rgba(255,176,32,.16);color:var(--warn)}
+  .b-bad{background:rgba(255,92,92,.16);color:var(--bad)}
+  .b-idle{background:rgba(143,173,181,.14);color:var(--dim)}
+
+  /* ---------- 顶部状态条（横屏一行铺开） ---------- */
+  #topbar{position:fixed;left:0;right:0;top:0;z-index:20;display:none;pointer-events:none;
+    padding:6px 10px;background:linear-gradient(to bottom,rgba(4,14,18,.92),rgba(4,14,18,0))}
+  #topbar.on{display:block}
+  #topbar .strip{display:flex;align-items:stretch;max-width:1180px;margin:0 auto}
+  #topbar .cell{flex:1 1 0;min-width:0;text-align:center;padding:1px 8px;
+    border-right:1px solid rgba(30,58,68,.75)}
+  #topbar .cell:last-child{border-right:0}
+  #topbar .cell .k{display:block;font-size:10.5px;color:rgba(232,244,246,.6);
+    white-space:nowrap;line-height:1.35}
+  #topbar .cell .v{display:block;font-size:12.5px;line-height:1.4;font-variant-numeric:tabular-nums;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #topbar .cell .b{font-size:11px;padding:0 6px}
+
+  /* ---------- 中央提示 / 准星 ---------- */
+  #alignhint{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:22;
+    display:none;text-align:center;pointer-events:none;background:rgba(4,14,18,.88);
+    border:1px solid var(--line);border-radius:12px;padding:14px 20px;font-size:13.5px;
+    line-height:1.7;max-width:44vw}
+  #alignhint.on{display:block}
+  #alignhint b{color:var(--acc)}
+  #crosshair{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:21;
+    width:24px;height:24px;display:none;pointer-events:none}
+  #crosshair.on{display:block}
+  #crosshair::before,#crosshair::after{content:'';position:absolute;background:rgba(79,209,224,.8)}
+  #crosshair::before{left:50%;top:0;width:1.5px;height:100%;transform:translateX(-50%)}
+  #crosshair::after{top:50%;left:0;height:1.5px;width:100%;transform:translateY(-50%)}
+
+  /* ---------- 右侧：地点信息卡（横屏竖栏） ---------- */
+  #card{position:fixed;right:10px;top:56px;bottom:58px;width:min(34vw,370px);z-index:24;
+    display:none;background:rgba(9,26,32,.95);border:1px solid var(--line);
+    border-radius:12px;padding:12px 14px 10px}
+  #card.on{display:flex;flex-direction:column}
+  #card .t{font-size:16px;font-weight:600;margin-bottom:2px;padding-right:26px}
+  #card .m{color:var(--acc);font-size:12.5px;margin-bottom:8px;line-height:1.5}
+  #card .d{color:var(--dim);font-size:12.5px;line-height:1.65;overflow:auto;flex:1;
+    padding-right:2px;-webkit-overflow-scrolling:touch}
+  #card .x{position:absolute;right:8px;top:6px;color:var(--dim);font-size:20px;
+    cursor:pointer;padding:2px 8px;line-height:1}
+
+  /* ---------- 左侧：设置面板（横屏竖栏） ---------- */
+  #panel{position:fixed;left:10px;top:56px;bottom:58px;width:min(33vw,340px);z-index:25;
+    display:none;background:rgba(9,26,32,.96);border:1px solid var(--line);
+    border-radius:12px;padding:12px 14px;overflow:auto}
+  #panel.on{display:block}
+  #panel .ctl{display:flex;align-items:center;gap:9px;font-size:12.5px;color:var(--dim);padding:5px 0}
+  #panel .ctl .lab{flex:0 0 76px}
+  #panel .ctl input[type=range]{flex:1;min-width:0}
+  #panel .ctl .num{flex:0 0 56px;text-align:right;font-variant-numeric:tabular-nums;color:var(--fg)}
+  #panel .ctl input[type=number]{flex:1;min-width:0;background:rgba(255,255,255,.06);
+    border:1px solid var(--line);border-radius:6px;color:var(--fg);padding:3px 7px;
+    font:inherit;font-variant-numeric:tabular-nums}
+  #panel .hint{color:var(--dim);font-size:11.5px;line-height:1.6;margin-top:8px;
+    border-top:1px solid var(--line);padding-top:8px}
+
+  /* ---------- 底部操作条 ---------- */
+  #bar{position:fixed;left:0;right:0;bottom:0;z-index:23;display:none;
+    padding:7px 12px calc(7px + env(safe-area-inset-bottom));
+    background:linear-gradient(to top,rgba(4,14,18,.94),rgba(4,14,18,0))}
+  #bar.on{display:block}
+  #bar .inner{display:flex;gap:7px;justify-content:center;align-items:center;
+    flex-wrap:nowrap;max-width:1180px;margin:0 auto;overflow-x:auto}
+
+  /* ---------- 桌面演示：拖动转视角 ---------- */
+  body.look-mode canvas{cursor:grab}
+  body.look-mode.look-dragging canvas{cursor:grabbing}
+  #lookhint{position:fixed;left:50%;bottom:56px;transform:translateX(-50%);z-index:24;
+    display:none;background:rgba(9,26,32,.9);border:1px solid var(--line);
+    border-radius:999px;padding:6px 14px;font-size:12px;color:var(--dim);
+    pointer-events:none;white-space:nowrap}
+  body.look-mode #lookhint{display:block}
+
+  .flash{position:fixed;left:50%;top:8px;transform:translateX(-50%);z-index:50;
+    background:rgba(79,209,224,.94);color:#04222a;padding:7px 15px;border-radius:999px;
+    font-size:12.5px;font-weight:600;opacity:0;transition:opacity .22s;pointer-events:none;
+    max-width:80vw;text-align:center}
+  .flash.on{opacity:1}
+
+  #loading{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:45;
+    display:none;text-align:center;font-size:13px;color:var(--dim)}
+  #loading.on{display:block}
+</style>
+</head>
+<body>
+
+<video id="cam" playsinline muted autoplay></video>
+<div id="loading">正在加载湖南地形数据…</div>
+
+<div id="rotate">
+  <div class="dev"></div>
+  <h2>请把平板横过来</h2>
+  <p>这个 Demo 按<b>横屏</b>设计：横屏才能拿到平板后摄完整的水平视场，
+     虚拟地形才能和真实沙盘对上。旋转平板即可自动切换。</p>
+</div>
+
+<div id="start-wrap">
+  <h1>湖南地形 AR 沙盘 · 陀螺仪方案</h1>
+  <p class="sub">
+    真实湖南 DEM（256×292 网格，0–2076 m）+ 真实相机透视，<b>完全不依赖 ARCore / WebXR</b>。<br>
+    相机画面走普通 <code>getUserMedia</code>，视角由<b>设备陀螺仪</b>驱动。<b>请横屏使用。</b>
+  </p>
+
+  <div class="card" id="precheck">正在检测…</div>
+
+  <div class="btnrow">
+    <button class="ghost" id="camtest">先测相机</button>
+    <button id="start" disabled>进入 AR 沙盘（横屏）</button>
+  </div>
+  <div class="btnrow">
+    <button class="ghost" id="nocam" style="display:none">无相机继续（桌面演示）</button>
+  </div>
+
+  <div class="card">
+    <div style="font-weight:600;margin-bottom:6px">怎么用</div>
+    <div style="color:var(--dim);font-size:13px">
+      1. <b>把平板横着装到固定支架上，镜头对准沙盘中心</b>
+         <b style="color:var(--warn)">（先对准，再进入 —— 顺序反了模型会锁在错的姿态上）</b><br>
+      2. 点「进入 AR 沙盘」，允许相机权限<br>
+      3. 屏幕中央会出现<b>湖南地形</b>（带地名标签）<br>
+      4. <b>缓慢左右旋转 / 俯仰平板</b> —— 地形固定在真实空间里，转视角就像透过窗口看沙盘<br>
+      5. <b>点地形上任意位置</b>选中最近的地点，右侧弹出介绍卡<br>
+      6. 左侧「设置」可调<b>沙盘宽度 / 相机高度 / 相机距离 / 起伏 / 水平视场角</b><br><br>
+      <b style="color:var(--dim)">没对准？</b>点底部「重新对齐」会按当前姿态重新锁一次。<br><br>
+      <b style="color:var(--warn)">注意</b>：这条路线只有<b>旋转</b>没有<b>平移</b>。
+      平板一旦移动位置，地形就会跟着滑动 —— 这是 3DoF 的固有限制。
+      所以它适用于<b>「固定在支架上只转不移」</b>的展项形态。
+    </div>
+  </div>
+
+  <p class="sub" style="margin:2px 0 0">
+    <a href="./index.html" style="color:var(--acc);font-weight:600;text-decoration:none">← 返回测试台</a>
+  </p>
+</div>
+
+<div id="topbar">
+  <div class="strip">
+    <div class="cell"><span class="k">对齐</span><span class="v" id="t-align">—</span></div>
+    <div class="cell"><span class="k">陀螺仪</span><span class="v" id="t-orient">—</span></div>
+    <div class="cell"><span class="k">支架仰角</span><span class="v" id="t-tilt">—</span></div>
+    <div class="cell"><span class="k">静止漂移</span><span class="v" id="t-drift">—</span></div>
+    <div class="cell"><span class="k">频率(均)</span><span class="v" id="t-hz">—</span></div>
+    <div class="cell"><span class="k">选中</span><span class="v" id="t-site">—</span></div>
+    <div class="cell"><span class="k">AR 标注</span><span class="v" id="t-ar">—</span></div>
+    <div class="cell"><span class="k">云台</span><span class="v" id="t-gimbal">—</span></div>
+    <div class="cell"><span class="k">帧率</span><span class="v" id="t-fps">—</span></div>
+  </div>
+</div>
+
+<div id="crosshair"></div>
+<div id="alignhint"></div>
+
+<div id="card">
+  <div class="x" id="card-x">×</div>
+  <div class="t" id="card-t">—</div>
+  <div class="m" id="card-m">—</div>
+  <div class="d" id="card-d"></div>
+</div>
+
+<div id="panel">
+  <div class="ctl"><span class="lab">沙盘宽度</span><input type="range" id="s-table" min="1.2" max="5.0" step="0.05" value="2.80"><span class="num" id="v-table">2.80 m</span></div>
+  <div class="ctl"><span class="lab">相机高度</span><input type="range" id="s-height" min="0.4" max="4.0" step="0.05" value="0.56"><span class="num" id="v-height">0.56 m</span></div>
+  <div class="ctl"><span class="lab">相机距离</span><input type="range" id="s-dist" min="0" max="8.0" step="0.05" value="2.00"><span class="num" id="v-dist">2.00 m</span></div>
+  <div class="ctl"><span class="lab">地形起伏</span><input type="range" id="s-relief" min="0.4" max="3.0" step="0.05" value="1.00"><span class="num" id="v-relief">1.00×</span></div>
+  <div class="ctl"><span class="lab">实物峰高</span><input type="number" id="i-peak" min="1" max="900" step="1" value="142"><span class="num">mm</span></div>
+  <div class="btnrow">
+    <button class="sm ghost" id="p-peak">按实物峰高对齐起伏</button>
+    <button class="sm ghost" id="p-reliefinfo">起伏比例</button>
+  </div>
+  <div class="hint">
+    <b>实物是起伏模型时必做</b>：虚拟地形的垂直比例必须和实物一致，否则
+    <b>整个叠加都贴不上</b>（不只是标注，虚拟地形本身就错位）。<br>
+    当前虚拟地形：水平 1:196,071 / 垂直 1:12,272 ⇒ <b>垂直夸张 16.0×</b>
+    （这个倍数与沙盘尺寸无关，改尺寸不会变）。<br>
+    <b>现场只需量一个数</b>：实物沙盘上最高点高出基准面多少毫米
+    （基准面 = 模型最低的平坦面），填进「实物峰高」再点按钮即可。
+    虚拟峰高 = 直径的 <b>5.1%</b>（2.8 m 沙盘即 142 mm），可拿这个比例先目测核对。<br>
+    ⚠️ 前提是实物模型是<b>同一套 DEM 的等比起伏</b>。若是手工艺术化造型
+    （峰被压扁/丘陵被抬高），单一 <code>reliefScale</code> 只能整体逼近，
+    无法逐点吻合 —— 那种情况建议把标注放在基准面上，不要跟随虚拟起伏。
+  </div>
+  <div class="ctl"><span class="lab">水平视场角</span><input type="range" id="s-fov" min="40" max="110" step="1" value="65"><span class="num" id="v-fov">65°</span></div>
+  <div class="ctl"><span class="lab">取景俯角</span><input type="range" id="s-pitch" min="10" max="60" step="1" value="26"><span class="num" id="v-pitch">26°</span></div>
+  <div class="ctl"><span class="lab">姿态平滑</span><input type="range" id="s-smooth" min="0" max="300" step="10" value="140"><span class="num" id="v-smooth">140 ms</span></div>
+  <div class="ctl"><span class="lab">台子水平转角</span><input type="range" id="s-gyaw" min="-180" max="180" step="1" value="0"><span class="num" id="v-gyaw">0°</span></div>
+  <div class="ctl"><span class="lab">台子上下转角</span><input type="range" id="s-gpitch" min="-60" max="60" step="1" value="0"><span class="num" id="v-gpitch">0°</span></div>
+  <div class="ctl"><span class="lab">光心偏交点 X</span><input type="range" id="s-gox" min="-30" max="30" step="1" value="0"><span class="num" id="v-gox">0 cm</span></div>
+  <div class="ctl"><span class="lab">光心偏交点 Y</span><input type="range" id="s-goy" min="-30" max="30" step="1" value="0"><span class="num" id="v-goy">0 cm</span></div>
+  <div class="ctl"><span class="lab">光心偏交点 Z</span><input type="range" id="s-goz" min="-30" max="30" step="1" value="0"><span class="num" id="v-goz">0 cm</span></div>
+  <div class="btnrow">
+    <button class="sm ghost" id="p-gimbal">云台模式：关</button>
+    <button class="sm ghost" id="p-gdrive">位置：角度驱动</button>
+    <button class="sm ghost" id="p-gcenter">台子对准中心</button>
+  </div>
+  <div class="hint">
+    <b>云台（台子）</b>：pad 固定在台子上、底座不动，台子可绕<b>竖直轴</b>水平转、
+    绕<b>水平轴</b>上下转。两个轴的<b>交点</b>是唯一不动的点，所以相机位置只由
+    「交点到光心的偏移」决定：<b>偏移 = 0 时转多少度位置都不动</b>（纯旋转），
+    偏移 ≠ 0 时相机沿圆弧平移，会让 AR 标注偏离真实地物。<br>
+    把「光心偏交点」三个滑块调到 0 = 后摄光心正装在交点上的理想装法。
+    云台模式下会画出交点（黄点）、竖直轴（青）、水平轴（品红）和偏移杆（黄线）。
+  </div>
+  <div class="hint">
+    <b>校准顺序</b>：① 调「沙盘宽度」等于真实沙盘宽度 →
+    ② 点底部「<b>自动取景</b>」让地形四角入画（用的是「取景俯角」，26° 接近人站着的视角）
+    → ③ 再微调「相机高度 / 距离」匹配平板实际位置 → ④ 最后用「水平视场角」让虚拟地形边缘和真实沙盘边缘重合。<br>
+    <b>看顶栏「取景」徽章</b>：显示「取景✓」表示四角都在画面内；
+    显示「上下超 1.3×」这类就说明某个方向出画了，点「自动取景」即可。<br>
+    相机视场角<b>无法从浏览器 API 拿到</b>（<code>getSettings()</code> / <code>getCapabilities()</code>
+    都不提供），所以这里是手动滑块。<br>
+    <b style="color:var(--warn)">为什么近处看不全？</b>平板后摄水平视场约 65°，
+    在 2 m 见方的沙盘前，物理上就装不下整个沙盘 —— 真实相机也拍不全，
+    所以虚拟地形超出画面其实是「和真实一致」的表现，不是 bug。
+  </div>
+  <div class="btnrow" style="margin-top:10px">
+    <button class="sm ghost" id="p-fusion">运动融合：开</button>
+    <button class="sm ghost" id="p-occl">遮挡剔除：开</button>
+    <button class="sm ghost" id="p-close">收起设置</button>
+  </div>
+  <div class="hint">
+    <b>遮挡剔除</b>：标签是「永远画在最上层」的（好处是不会被地形切掉半张），
+    代价是锚点躲在山背后时标签仍浮在山脊上 —— 那会让「绑定在沙盘实体上」破功。
+    打开后每帧沿视线做高度场步进，锚点被地形挡住就一并隐藏标签。<br>
+    <b>视野裁剪关掉时遮挡也一并关</b>（那是「一次性全渲染」对比模式，
+    两个机制同时变会看不出是谁在起作用）。<br>
+    想单独看遮挡效果：<b>视野裁剪保持开</b>，只切这个开关。
+  </div>
+</div>
+
+<div id="bar">
+  <div class="inner">
+    <button class="sm" id="b-align">重新对齐</button>
+    <button class="ghost sm" id="b-frame">自动取景</button>
+    <button class="ghost sm" id="b-zero">漂移归零</button>
+    <button class="ghost sm" id="b-terrain">隐藏地形</button>
+    <button class="ghost sm" id="b-labels">隐藏标签</button>
+    <button class="ghost sm" id="b-cull">视野裁剪：开</button>
+    <button class="ghost sm" id="b-look">拖动转视角：关</button>
+    <button class="ghost sm" id="b-panel">设置</button>
+    <button class="ghost sm" id="b-full">全屏</button>
+    <button class="ghost sm" id="b-report">出报告</button>
+  </div>
+</div>
+
+<div id="lookhint">拖动画面转视角 · 方向键微调 · R 回正 · L 开关</div>
+
+<div class="flash" id="flash"></div>
+
+<script type="importmap">
+{ "imports": { "three": "./vendor/three/three.module.js" } }
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { SITES, GEO_BOUNDS } from './sites.js';
+
+const $ = id => document.getElementById(id);
+const R = {};
+
+function badge(t, k) { return '<span class="b b-' + k + '">' + t + '</span>'; }
+function row(k, v) { return '<div class="row"><span class="k">' + k + '</span><span class="v">' + v + '</span></div>'; }
+function setRow(id, t) { const el = $(id); if (el) el.textContent = t; }
+function setHtml(id, h) { const el = $(id); if (el) el.innerHTML = h; }
+function flash(msg) {
+  const el = $('flash'); if (!el) return;
+  el.textContent = msg; el.classList.add('on');
+  clearTimeout(flash._t);
+  flash._t = setTimeout(() => el.classList.remove('on'), 1800);
+}
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+
+/* ---------- 可调参数 ---------- */
+const P = {
+  /* ★ 现场真实尺寸（2026-10-13 确认，10-14 修正台面高度）：
+       · 沙盘 = 圆形，直径 2.80 m（外径 φ2800，内径 φ2750）
+       · 平板距沙盘边缘 0.60 m（俯视图标注）→ 距中心 2.00 m
+       · 平板离地 1.30 m，台面离地 0.74 m
+     ⚠️ camHeight 是【相对沙盘面】的高度：
+        camHeight = 1.30 − 0.74 = 0.56 m。
+     ⚠️ 相机距中心 2.00 m（在圆外 0.60 m）时，俯角 ≈ 15.6°，
+        沙盘可全部入画（与 30° 设计标注的差异见 README）。 */
+  camHeight: 0.56,
+  camDist: 2.00,
+  tableW: 2.80,
+  reliefScale: 1.00,
+  hFov: 65,          // ★ 横屏用「水平视场角」——平板后摄的真实水平视场就在 65° 上下
+  framePitch: 26,    // 「自动取景」使用的俯角（度）
+  smoothMs: 140,     // 姿态平滑时间常数（ms），0 = 直通
+};
+/* ---------- 取景几何：必须逐角点算，不能用「相机到中心的距离」 ----------
+   ❌ 曾经的错误做法：
+        相机到中心距离 L = √(1.5² + 1.3²) ≈ 1.98 m
+        1.8 m 宽沙盘张角 = 2·atan(0.9/1.98) ≈ 48.8° → 结论「在 65° 里有余量」
+      这个算法在【俯视】下完全失效：近端角点 (0.9, 0, +D/2) 离相机比中心近得多，
+      它的水平张角是 34.5°、垂直张角 30.8°，而半视场只有 32.5° / 21.7° ——
+      真机一跑，地形直接撑出画面下沿和右侧。
+
+   ✅ 正确做法：把四个角点变换到相机空间逐个判角。
+      相机在 (0, h, d) 看向原点，则
+        f = (0, -h, -d)/L              （光轴）
+        u = (0,  d, -h)/L              （相机 up）
+        depth = (P - eye)·f
+        水平角 = atan(|Δx| / depth)
+        垂直角 = atan(((P - eye)·u) / depth)
+      水平方向就是世界 X 轴，所以 Δx 不用再投影。
+      判定用【归一化比值】> 1 表示超出，方便显示「超了多少倍」。
+
+   举例：tableW=1.8 (tableD=2.063)、hFov=65、16:10 横屏时，
+   需要 camHeight≈1.15 / camDist≈2.35 才能四角全入画。
+   换句话说 —— 平板后摄 65° 的视场，**物理上无法从近距离看全 2 m 见方的沙盘**。
+   真实相机也拍不全，所以这不是 bug，是「虚拟地形和真实沙盘一致」的必然结果。
+   点「自动取景」可让程序按当前沙盘尺寸算出这组参数。
+
+   ★ 当前现场参数（圆形沙盘 直径 2.80 / camDist 2.00 / camHeight 0.56）下，
+     边缘是【必然出画】的：相机在圆外 0.60 m、高出沙盘面 0.56 m，
+     受水平视场 65° 限制，最优点俯角（≈26°）下也只覆盖约 88.6%
+     （正对中心时的实测值，见 README 覆盖表）。要全部入画需退到 2.56 m 或抬到 0.71 m。
+     这不是配置错误 —— 换任何高度都一样（见 README「圆形沙盘」一节）。
+     注意：这里说的是【虚拟地形】也拍不全，与「AR 标注按视野裁剪」是两件事 ——
+     标注裁剪只显示相机照到的那部分，本来就不要求全景。 */
+const TERRAIN_ASPECT = 5.5 / 4.8;          // 与原始 demo 一致：宽 4.8 / 深 5.5
+/* ⚠️ 这里必须用 terrain-meta.json 声明的 2076，不要「修正」成数据里的实际最大值。
+   实测：声明 elevation_max_m = 2076.0，而 terrain-height.f32 的实际最大值是 1745.19 ——
+   两者不同是正常的：2076 是**原始 DEM 的高程上限**，重采样到 256×292 后
+   孤立尖峰被平滑到 1745。用 2076 归一化 = 保持【绝对高程比例】
+   （真实 300 m 的山就渲染成 300/2076 的相对高度）。
+   若改成 1745，整片地形会被整体抬高 19%，虚拟地形与真实地貌的高程关系就错了。 */
+const MAX_ELEV = 2076;                     // terrain-meta.json 声明的上限
+/* 湖南经向实际跨度（km）：GEO_BOUNDS 的经度差 5.5647° × 111.32 × cos(27.5°)。
+   用来算「水平比例」，进而算垂直夸张倍数 —— 见 terrainStats()。 */
+const HORIZ_SPAN_M = 549000;
+const BASE_RELIEF_PER_4_8M = 0.29;         // 原始 demo：2076 m -> 0.29 m（1 : 7159）
+const BASE_LIFT_PER_4_8M = 0.025;
+
+let tableD = P.tableW * TERRAIN_ASPECT;
+let reliefM = BASE_RELIEF_PER_4_8M * (P.tableW / 4.8) * P.reliefScale;
+let baseLift = BASE_LIFT_PER_4_8M * (P.tableW / 4.8);
+
+/* ---------- 预检（只读） ---------- */
+(async () => {
+  let html = '';
+  const https = location.protocol === 'https:' || location.hostname === '127.0.0.1';
+  const hasGum = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+  const hasOrient = 'DeviceOrientationEvent' in window;
+  html += row('HTTPS 安全上下文', https ? badge('是', 'ok') : badge('否（相机不可用）', 'bad'));
+  html += row('getUserMedia', hasGum ? badge('存在', 'ok') : badge('不存在', 'bad'));
+  html += row('DeviceOrientationEvent', hasOrient ? badge('存在', 'ok') : badge('不存在', 'bad'));
+  const needPerm = hasOrient && typeof DeviceOrientationEvent.requestPermission === 'function';
+  html += row('传感器需要授权', needPerm ? badge('是（iOS 风格）', 'warn') : badge('否', 'ok'));
+  R.https = https; R.hasGum = hasGum; R.hasOrient = hasOrient; R.needPerm = needPerm;
+  const ok = https && hasGum && hasOrient;
+  html += row('结论', ok ? badge('可以启动', 'ok') : badge('环境不满足', 'bad'));
+  $('precheck').innerHTML = html;
+  $('start').disabled = !ok;
+})();
+
+/* ---------- 相机 ---------- */
+let videoStream = null;
+function stopCam() {
+  if (videoStream) { videoStream.getTracks().forEach(t => t.stop()); videoStream = null; }
+  const v = $('cam'); if (v) { v.srcObject = null; v.style.display = 'none'; }
+  const b = $('camtest'); if (b) b.textContent = '先测相机';
+}
+$('camtest').addEventListener('click', async () => {
+  if (videoStream) { stopCam(); return; }
+  const v = $('cam');
+  try {
+    videoStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+      audio: false,
+    });
+    v.srcObject = videoStream;
+    v.style.display = 'block';
+    await v.play();
+    $('camtest').textContent = '关闭相机预览';
+    const tr = videoStream.getVideoTracks()[0];
+    R.cameraLabel = tr ? tr.label : '';
+    R.cameraSettings = tr ? tr.getSettings() : null;
+    R.cameraTestOk = true;
+  } catch (e) {
+    R.cameraTestOk = false;
+    R.cameraTestError = e.name + ': ' + (e.message || '');
+    flash('相机打开失败：' + e.name);
+  }
+});
+
+/* ---------- 姿态 ----------
+   经典 DeviceOrientationControls 算法（three.js 已从核心移除）。
+   横屏时 screen.orientation.angle = 90 或 270，必须靠最后一步补偿，
+   否则叠加层会整体偏 90°。 */
+const zee = new THREE.Vector3(0, 0, 1);
+const _e2 = new THREE.Euler();
+const q0 = new THREE.Quaternion();
+const q1 = new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5));
+
+let haveOrient = false, orientN = 0;
+let lastOrientT = 0, orientGapMs = 0;   // 相邻上报间隔（EMA），见 onOrient
+let evTimes = [];
+let lastA = null, lastB = null, lastG = null;
+let alpha = 0;
+
+/* ---------- α 是「绝对」还是「相对」—— 决定「开一整天会不会歪」----------
+   背景：W3C 允许 `deviceorientation.alpha` 有两种实现 ——
+     · 绝对：相对【地磁北】。长时间漂移有界（磁力计会把零偏拉回来）。
+     · 相对：相对【任意起始朝向】。α 退化成「陀螺积分」，零偏会一直累积。
+   实测静止漂移约 0.1 °/min，若 α 是相对的就意味着 8 小时累计约 48° ——
+   模型会慢慢歪掉，展项必须定期点「漂移归零」。
+
+   ⚠️⚠️ 这里有一个**我一开始想错、差点发出一个测不出东西的判据**的地方：
+
+   ❌ 最初的想法：同时监听 `deviceorientationabsolute`（规范保证绝对），
+      看 `offset = wrap(α_abs − α_dev)` 是否【恒定】—— 恒定就说明 α_dev 也是绝对的。
+   ✅ 但这是错的：如果 α_dev 是相对的，它同样由陀螺积分得到，
+      设备偏航 θ 时 α_dev 也变 θ —— 所以 offset 只是【两个参考系的固定差】，
+      本来就是恒定的。**「offset 恒定」区分不出绝对与相对。**
+
+   ✅ 真正能分辨的是 **offset 的大小**：
+      · 两者都是绝对 → 测的是同一个地磁北 → offset ≈ 0（只差磁偏角，几度）
+      · α_dev 是相对 → offset 取决于「任意起点」在哪 → 可以是任意值
+      所以 |offset| 大 ⇒ 可以断定 α_dev 不是绝对参考。
+      ⚠️ 但反过来不成立：|offset| ≈ 0 只是「**可能**是绝对」——
+         相对参考的任意起点也可能恰好落在北附近。这不是证明。
+         决定性判据是【长时间看 offset 是否持续增长】，那需要跑几分钟以上。
+
+   所以下面给出的是**证据 + 明确的置信度**，不是一句「是/否」。
+   长期行为仍以「静止漂移率」和现场定期归零为准。 */
+/* 角度折到 ±180°。多处要用（漂移判定、offset 采样、转向累计），只写一份。 */
+function wrap180(d) { while (d > 180) d -= 360; while (d < -180) d += 360; return d; }
+
+let absEventN = 0, absPrevA = null, absPrevT = 0;
+/* ⚠️ 判据量用 offMaxAbs 而不是「均值」——
+   offset 是角度，取算术平均在 ±180° 附近会出错：
+   真实 offset 若是 180°（相对参考的任意起点恰好落在正南），样本会跨 ±180，
+   例如 {179, −179, 178, −178} → 均值算出 ≈0 → 被判成「参考系一致」。
+   那是【危险方向】的错：用户会以为不用定期归零，而实际上模型会一直歪。
+   改用「样本里偏离 0 最远的那个」＝ 圆周距离，稳健且不会因跨越而抵消。 */
+let offMin = null, offMax = null, offMaxAbs = 0, offN = 0, offSum = 0;
+
+function onOrientAbs(e) {
+  if (e.alpha === null || e.alpha === undefined) return;
+  absEventN++;
+  const t = performance.now();
+  /* 用【绝对事件自己】的角速度判静止，不蹭 onOrient 的样本（两者频率可能不同）。
+     只在静止时采样：两个事件不是同一 tick 发出的，设备转动时 offset 会带上
+     与角速度成正比的采样偏差（30 °/s × 16 ms ≈ 0.5°）。 */
+  if (absPrevA !== null) {
+    const dt = (t - absPrevT) / 1000;
+    if (dt > 0 && dt <= DT_MAX_SEC) {
+      const dps = Math.abs(wrap180(e.alpha - absPrevA)) / dt;
+      if (dps < STILL_RATE_DPS && lastA !== null) {
+        const off = wrap180(e.alpha - lastA);
+        if (offMin === null || off < offMin) offMin = off;
+        if (offMax === null || off > offMax) offMax = off;
+        offMaxAbs = Math.max(offMaxAbs, Math.abs(off));
+        offSum += off; offN++;
+      }
+    }
+  }
+  absPrevA = e.alpha; absPrevT = t;
+}
+
+/* 累计【转过的路径长度】（Σ|Δα|），用来判断「测试期间设备到底有没有转过向」。
+   ⚠️ 不能用「α 的 max − min」代替 —— 那个在跨越 0/360 时会误判：
+      α 从 358° 走到 3°（其实只转了 5°），min=3 / max=358 → 跨度 355°，
+      会被当成「转过一大圈」而放行，于是一个「其实没转向」的样本被拿来下结论。
+      累计路径长度对环绕免疫，语义也更准：「设备到底转了多少度」。 */
+let yawTravelledDeg = 0;
+
+/* 结论：以【偏离 0 最远的 offset】作证据，并明确标注置信度。
+   ⚠️ 阈值 10° 的来由：两者都绝对时只差磁偏角（中国境内约 -1° ~ -11°），
+      取 10° 作分界偏保守；真正「相对参考」的 offset 通常远大于此。 */
+const REF_OFFSET_DEG = 10;
+function alphaAbsoluteVerdict() {
+  if (absEventN === 0) {
+    return { verdict: 'no-absolute-event', label: '无绝对事件（iOS 常见）',
+             hint: '该平台不提供 deviceorientationabsolute，无法用对比法取证。' +
+                   '长期行为看「静止漂移率」，并建议展项定期点「漂移归零」。' };
+  }
+  if (offN < 5 || offMin === null) {
+    return { verdict: 'insufficient', label: '样本不足（需设备静止若干秒）',
+             absEventN, offN,
+             hint: 'offset 采样 ' + offN + ' 个（需 ≥ 5 个静止样本）。' +
+                   '绝对事件已收到 ' + absEventN + ' 个 —— 说明平台确实发这个事件。' };
+  }
+  const meanOff = offSum / offN;
+  const spread = offMax - offMin;
+  const common = {
+    absEventN, offN,
+    meanOffsetDeg: Number(meanOff.toFixed(2)),
+    offsetSpreadDeg: Number(spread.toFixed(2)),
+    offsetMaxAbsDeg: Number(offMaxAbs.toFixed(2)),
+    yawTravelledDeg: Number(yawTravelledDeg.toFixed(1)),
+  };
+  if (yawTravelledDeg < 45) {
+    return { ...common, verdict: 'insufficient-yaw', label: '样本不足（测试期间几乎没转向）',
+             hint: '测试期间累计只转了 ' + yawTravelledDeg.toFixed(0) + '°（需 ≥ 45°）。' +
+                   '不转向就无法区分参考系 —— 请左右转动平板再回来看。' };
+  }
+  /* 判据量是 offMaxAbs（偏离 0 最远的样本），不是均值 —— 见 offMaxAbs 声明处的说明：
+     均值在真实 offset ≈ 180° 时会因跨越 ±180 而抵消成 ≈0，误判成「参考系一致」，
+     那是危险方向的错。 */
+  if (offMaxAbs >= REF_OFFSET_DEG) {
+    return { ...common, verdict: 'different-reference',
+             label: '两者参考系不同（最大偏离 ' + offMaxAbs.toFixed(1) + '°）',
+             hint: 'α_dev 与 α_abs 最大差了 ' + offMaxAbs.toFixed(1) + '°，说明 ' +
+                   '`deviceorientation` 的 α 【不是】绝对参考。' +
+                   '零偏会累积（约 0.1 °/min → 8 小时约 48°），展项必须定期点「漂移归零」。' };
+  }
+  return { ...common, verdict: 'same-reference',
+           label: '两者参考系一致（最大偏离 ' + offMaxAbs.toFixed(1) + '°）',
+           hint: '⚠️ 这只是【证据】，不是证明：offset ≈ 0 说明两个事件很可能都指向地磁北，' +
+                 '但也可能是相对参考的任意起点恰好落在北附近。' +
+                 '决定性判据是【长时间看 offset 是否持续增长】（需跑几分钟）。' +
+                 '在此之前，稳妥做法仍是展项定期点「漂移归零」。' };
+}
+
+/* ---------- 支架仰角是否落在安全区 ----------
+   β = 前后仰角（0° = 屏幕平放朝上，90° = 完全竖直）。
+   页面渲染由 (α,β,γ) 直接复合、从不反解，所以【画面在任意 β 下都正确】。
+   但 HUD 上「静止漂移」「相对对齐偏转」拿 α 当标量用，
+   在 β→90° 时会被 1/cos(β) 放大（这是内旋欧拉序 Z-X'-Y'' 的固有性质）。
+   给现场人员一个直接的判据，省得他猜「这个跳动的读数是不是坏了」。
+   推导与实测见 README「支架仰角」一节 / tools/vertical-stand-check.mjs。 */
+function standTiltVerdict() {
+  if (!haveOrient) return { verdict: 'no-data', label: '无数据' };
+  const b = Math.abs(lastB);
+  const amp = b >= 90 ? Infinity : 1 / Math.cos(b * Math.PI / 180);
+  const deg = Number(b.toFixed(1));
+  /* 统一保留 2 位小数 —— 与测试里「放大倍数 = 1/cos(β)」的核对保持一致。
+     只留 1 位时 7.185 → 7.2，会与理论值差 0.015，看着像算错了。 */
+  const ampTxt = amp === Infinity ? '∞' : amp.toFixed(2);
+  if (b >= 85) {
+    return { verdict: 'unsafe', beta: deg, amp: Infinity,
+             label: 'β=' + deg + '° · α 放大 ' + ampTxt + ' · 遥测不可信',
+             hint: '接近完全竖直，α 已失去意义（画面仍正常，但漂移/偏转读数会乱跳）。' +
+                   '把平板放平一些 —— 建议 β ≤ 80°。' };
+  }
+  if (b > 80) {
+    return { verdict: 'warn', beta: deg, amp: Number(amp.toFixed(2)),
+             label: 'β=' + deg + '° · α 放大 ' + ampTxt + ' · 偏大',
+             hint: '遥测开始明显跳动。建议把平板放平一些（β ≤ 80°，即与水平面夹角 ≥ 10°）。' };
+  }
+  return { verdict: 'ok', beta: deg, amp: Number(amp.toFixed(2)),
+           label: 'β=' + deg + '° · α 放大 ' + ampTxt + ' · 安全',
+           hint: '画面与遥测都可信。' };
+}
+
+/* ---------- 静止漂移估计 ----------
+   关键纠正：`alpha - alignAlpha`【不是漂移】—— 用户转动平板同样会让 alpha 变。
+   拿它除以时长当「°/min 漂移」，会把「用户转头」误报成「陀螺仪漂了」，
+   实测里就出现过 -3.9 °/min 这种吓人的假数字。
+
+   真漂移只能这样测：用相邻事件的 alpha 差分估出角速度，
+   只有【角速度低于阈值】时才认为设备静止，此时 alpha 的缓慢变化才是零偏漂移。
+   漂移率 = 静止时段累计偏转 / 静止时段总时长。
+
+   ⚠️ 这里用 alpha 是【跨屏幕方向成立】的，不是竖屏专用的巧合：
+   W3C 的 R_enu = Rz(α)·Rx(β)·Ry(γ) 是【外旋】复合（最右边的先作用），
+   α 作用在最后 → α 恒等于「绕世界竖直轴的偏航」，与设备怎么摆、屏幕朝哪都无关。
+   实测（tools/_probe-axes.mjs）：任意姿态、任意屏幕角下单独扰动 α，
+   世界系增量的旋转轴都是 (0, 1, 0) = 世界竖直轴。
+   所以「左右转平板」在横屏下改的【仍然是 α】，不是 β。
+   （我曾凭直觉以为 α 是「绕屏幕法线的滚转」、横屏下要用 β，那是错的 ——
+     把矩阵乘法的左右顺序想反了。详见 README 里那一节。） */
+const STILL_RATE_DPS = 2.0;          // °/s，低于此视为「静止」
+const STILL_MIN_MS = 4000;           // 静止样本不足 4 秒不给结论
+/* dt 上限必须放宽到 5 秒。
+   低功耗门控下 Android 静止时事件间隔可达 1~2 秒（实测 124 秒只有 102 个事件
+   = 0.82 Hz，平均间隔 1.22 秒）。原来卡在 0.6 秒，会把 90% 以上的样本丢掉 ——
+   实测 124 秒里只累计到 7.4 秒静止样本，数据完全不可信。
+
+   放宽是安全的：判据是【角速度】而不是间隔。
+   真正需要防的只是「长时间断流后的姿态跳变」，那种情况的角速度会很大，
+   会被判成转动，不会污染漂移样本。 */
+const DT_MAX_SEC = 5.0;
+let sPrevA = null, sPrevT = 0;
+let stillDriftDeg = 0, stillMs = 0, movingMs = 0;
+let droppedN = 0;                    // 被丢弃的样本数（间隔过长）
+
+/* ---------- 为什么【第一次拿到姿态就立刻对齐】 ----------
+   「进去后延迟 N 秒再自动对齐」看起来更稳妥，其实是「进入一瞬间模型转一下」的
+   直接原因。因为对齐前后用的是【两套不同的滚转约定】：
+
+     对齐前：相机 = 固定视角 —— 位置 (0,camHeight,camDist) + lookAt(中心) + up = 世界竖直
+     对齐后：相机 = 设备视角 —— camQuat = readDeviceQuat() · alignQuat，up = 设备 up
+
+   两者都指向地形中心，所以差别【只在滚转】。而设备只要有侧倾，
+   这两套滚转就差那么多度 —— 延迟多久，用户就盯着一个滚转不对的模型看多久，
+   然后眼睁睁看它「转过去」。真机录屏里 3.8 s（未对齐，看着是对的）
+   → 4.0 s（弹出「已自动对齐」，同一帧转掉 ~20~45°）就是这个。
+
+   正确做法：启动页第 1 步已经要求「把平板装到支架上、镜头对准沙盘中心」，
+   也就是【进入之前就已经对准了】。所以第一次拿到姿态就是最佳对齐时机 ——
+   模型从第一帧起就是最终姿态，根本不存在中间态。
+
+   配套：对齐前不渲染模型（见 render()），并且首次对齐直接吸附、不走 slerp
+   （否则第一帧还会从旧姿态平滑过去，等于换了个更短的跳变）。 */
+function onOrient(e) {
+  if (e.alpha === null || e.alpha === undefined) return;
+  const first = !haveOrient;
+  if (first) haveOrient = true;
+  orientN++;
+  const t = performance.now();
+  /* 相邻两次上报的间隔 —— 「静止时会不会一跳一跳」要看这个：
+     Android 静止时会把 deviceorientation 降到 ~1 Hz，此时平滑根本来不及
+     把两次之间填满，观感就是「一秒跳一格」。 */
+  if (lastOrientT) {
+    const gap = t - lastOrientT;
+    if (gap > 0 && gap < 5000) orientGapMs = orientGapMs ? orientGapMs * 0.85 + gap * 0.15 : gap;
+  }
+  lastOrientT = t;
+  evTimes.push(t);
+  alpha = e.alpha; lastA = e.alpha; lastB = e.beta; lastG = e.gamma;
+  /* 每次拿到绝对姿态就校正一次积分结果 —— 这是「高频但不累积漂移」的关键 */
+  resetBaseFromOrient();
+  /* 必须在 resetBaseFromOrient() 之后才能对齐（对齐要读 qBase） */
+  if (first) { flash('陀螺仪已就绪'); alignNow(true); }
+
+  if (sPrevA !== null) {
+    const dt = (t - sPrevT) / 1000;
+    if (dt > 0 && dt <= DT_MAX_SEC) {
+      const da = wrap180(e.alpha - sPrevA);
+      /* 累计转向路径长度 —— 判定「α 是否绝对」时要确认设备真的转过向
+         （一直不动的话 offset 恒定是必然的，不能据此下结论） */
+      yawTravelledDeg += Math.abs(da);
+      const dps = Math.abs(da) / dt;
+      if (dps < STILL_RATE_DPS) { stillDriftDeg += da; stillMs += dt * 1000; }
+      else { movingMs += dt * 1000; }
+    } else {
+      droppedN++;
+    }
+  }
+  sPrevA = e.alpha; sPrevT = t;
+}
+
+/* 采样覆盖率 = 有效样本时长 / 总时长。
+   低功耗门控下这个数可能很低，报告里必须显示 ——
+   覆盖率太低时「静止漂移 0.00」只能说明「没测到」，不能说明「没有漂移」。 */
+function sampleCoverage() {
+  const total = stillMs + movingMs;
+  const secs = t0 ? (performance.now() - t0) / 1000 : 0;
+  return {
+    effectiveSec: Number((total / 1000).toFixed(1)),
+    droppedN,
+    coverage: secs > 0 ? Number((total / 1000 / secs).toFixed(3)) : 0,
+  };
+}
+
+/* 静止漂移率（°/min）；静止样本不足时返回 null */
+function staticDriftPerMin() {
+  if (stillMs < STILL_MIN_MS) return null;
+  return stillDriftDeg / (stillMs / 60000);
+}
+function staticDriftTxt() {
+  const r = staticDriftPerMin();
+  return r === null ? '采样中 ' + (stillMs / 1000).toFixed(0) + 's' : r.toFixed(2) + ' °/min';
+}
+
+/* 相对对齐时刻的偏转角（转动 + 漂移的混合，不能当漂移用）。
+   用 α 之差是【跨屏幕方向成立】的：α 恒等于「绕世界竖直轴的偏航」，
+   与屏幕方向无关（数值验证见 tools/_probe-axes.mjs）。
+   曾经怀疑「横屏下应该用 β」，那是把 Rz(α)Rx(β)Ry(γ) 的乘法顺序想反了 ——
+   α 作用在最后，所以它始终是世界偏航。 */
+function yawFromAlign() {
+  if (alignAlpha === null) return null;
+  let d = alpha - alignAlpha;
+  while (d > 180) d -= 360;
+  while (d < -180) d += 360;
+  return d;
+}
+
+/* 调试出口。
+   `<script type="module">` 的顶层变量不会挂到 window 上，
+   而 CDP / 控制台只能访问全局作用域 —— 没有这个出口就没法用合成事件做回归验证。 */
+const _v3 = new THREE.Vector3();
+/* 世界坐标 → 屏幕像素（NDC 只到 -1..1，乘半宽就是像素）。
+   用 cam3.matrixWorldInverse 而不是直接 project：project 会顺手改矩阵，
+   在同一帧里连着调两次会互相干扰（第一版就是这么错的）。 */
+function projectWorldRaw(x, y, z) {
+  cam3.updateMatrixWorld();
+  cam3.matrixWorldInverse.copy(cam3.matrixWorld).invert();
+  _v3.set(x, y, z).applyMatrix4(cam3.matrixWorldInverse);
+  const behind = _v3.z > -cam3.near;
+  _v3.applyMatrix4(cam3.projectionMatrix);
+  return {
+    px: (_v3.x * 0.5 + 0.5) * innerWidth,
+    py: (-_v3.y * 0.5 + 0.5) * innerHeight,
+    ndcX: _v3.x, ndcY: _v3.y, ndcZ: _v3.z,
+    behind,
+  };
+}
+window.__gyro = {
+  get state() {
+    return {
+      haveOrient, aligned, alignCount,
+      /* 对齐前的「只清屏不渲染」帧数 —— 用来验证「对齐前不显示模型」这条约束 */
+      clearedFrames, snapPose, fallbackShow,
+      /* 总帧数 —— 验证「渲染循环还活着」（含显卡上下文丢失后是否恢复）时要用 */
+      totalFrames,
+      orientN,
+      stillMs: Number(stillMs.toFixed(1)),
+      movingMs: Number(movingMs.toFixed(1)),
+      stillDriftDeg: Number(stillDriftDeg.toFixed(4)),
+      staticDriftPerMin: staticDriftPerMin(),
+      yawFromAlignDeg: yawFromAlign(),
+      peakHz: Number(peakHz.toFixed(2)),
+      ...sampleCoverage(),
+      haveMotion, motionN, motionHz: Number(motionHz.toFixed(2)),
+      motionFusion, motionGain,
+      raw: { alpha: lastA, beta: lastB, gamma: lastG, screenAngle: screenAngleDeg() },
+      /* 现场最要紧的两个判据：支架仰角是否安全、α 有没有绝对参考 */
+      standTilt: standTiltVerdict(),
+      alphaAbsolute: alphaAbsoluteVerdict(),
+      absEventN,
+    };
+  },
+  /* 取景相关的也暴露出来，方便自动化验证「自动取景是否真的解出四角入画」 */
+  framingInfo,
+  autoFrame,
+  /* ---------- AR 锚定 / 视野裁剪（自动化验证要读）----------
+     暴露每个锚点的【世界坐标】与【本帧可见性】：
+       · 转一圈相机后 pos 逐分量不变      → 证明「锚定」
+       · 转向左 / 右时 visible 只在一侧为真 → 证明「按视野显隐」 */
+  get arAnchors() {
+    return anchors.map(a => ({
+      id: a.site.id, name: a.site.name,
+      pos: { x: a.pos.x, y: a.pos.y, z: a.pos.z },
+      visible: a.visible,
+      /* rendered = three.js 对象本帧是否真的提交渲染。
+         visible 是「判定」，rendered 是「结果」—— 两者必须一致，
+         否则说明有别的代码在覆写 .visible（这个坑真踩过：按钮直接写
+         .visible，被下一帧的裁剪结果覆盖回去）。 */
+      rendered: a.ring.visible,
+      score: Number.isFinite(a.score) ? Number(a.score.toFixed(4)) : null,
+      /* 被地形遮挡（只在视野内才测）。标签隐藏可能是「出画」也可能是
+         「被山挡住」，排查时这两者必须能分开 —— 否则会把遮挡误判成裁剪 bug。 */
+      occluded: !!a.occluded,
+      labelRendered: a.label.visible,
+    }));
+  },
+  get arVisibleCount() { return arVisibleN; },
+  get arOccludedCount() { return arOccludedN; },
+  get arCoverage() { return Number(arCoverage.toFixed(4)); },
+  /* 相机是否真的出图 —— 桌面/无相机降级路径要靠它证明「没相机也照常渲染」 */
+  get cameraTestOk() { return !!R.cameraTestOk; },
+  get arCullEnabled() { return arCull; },
+  setArCull(v) { arCull = !!v; return arCull; },
+  get arOcclusionEnabled() { return arOcclusion; },
+  setArOcclusion(v) { arOcclusion = !!v; return arOcclusion; },
+  /* 遮挡判定的底层入口：测试要用【独立方法】（网格射线）交叉验证
+     高度场步进的结果，两个方法都不一致就说明有一个是错的。 */
+  isAnchorOccluded,
+  /* 遮挡判据的阈值。测试必须读它，不能自己写死 ——
+     写死的话改了阈值测试还「通过」，等于没测。 */
+  get occlusionThresholds() {
+    return { in: OCC_EPS_IN, out: OCC_EPS_OUT, steps: OCC_STEPS, t0: OCC_T0, t1: OCC_T1 };
+  },
+  /* 把整条视线的采样点摊开：每一步都给出【射线高度】【双线性地形高度】
+     【网格地形高度】。
+     为什么要三个一起给：遮挡判定有两个可能出错的环节 ——
+       ① 判据本身（拿高度比还是拿距离比）
+       ② 地形高度从哪来（双线性插值 vs 三角网格）
+     只报一个布尔值的话，两者混在一起没法定位。
+     实测踩过：用「网格首交点比锚点近 5 mm」当判据，掠射角下 5 mm 距离
+     只对应亚毫米高度差 —— 判据过敏，把 1 mm 的起伏也算成遮挡。
+     所以判据必须统一到【高度】，地形高度用两种来源互验。 */
+  occlusionRay(camPos, target, n = 48) {
+    const out = [];
+    const dx = target.x - camPos.x, dy = target.y - camPos.y, dz = target.z - camPos.z;
+    for (let i = 1; i <= n; i++) {
+      const t = OCC_T0 + (OCC_T1 - OCC_T0) * (i / n);
+      const x = camPos.x + dx * t, y = camPos.y + dy * t, z = camPos.z + dz * t;
+      if (Math.abs(x) > P.tableW * 0.5 || Math.abs(z) > tableD * 0.5) continue;
+      out.push({
+        t: Number(t.toFixed(5)), rayY: y,
+        fieldY: heightAtUv(worldToUv(x, z, _occUv)),
+        meshY: this.terrainYAt(x, z),
+      });
+    }
+    return out;
+  },
+  worldToUv(x, z) { const u = worldToUv(x, z); return { x: u.x, y: u.y }; },
+  /* 视野覆盖多边形（沙盘面上的世界坐标 xz）—— 验证「映射」用 */
+  get arRegionPolygon() {
+    const poly = visibleGroundPolygon();
+    if (!poly) return [];
+    return clipPolyToCircle(poly, P.tableW / 2)
+      .map(p => ({ x: Number(p.x.toFixed(4)), z: Number(p.z.toFixed(4)) }));
+  },
+  /* 相机世界位置 —— 验证「锚点不随相机移动」时要对比 */
+  get camPos() {
+    const p = cam3.position;
+    return { x: p.x, y: p.y, z: p.z };
+  },
+  /* ---------- 需求验收要用的量 ---------- */
+  /* 世界坐标 → 屏幕像素。用于量「标注在屏幕上到底稳不稳」——
+     只验证世界坐标不变是不够的：世界坐标不变、屏幕上仍可能抖
+     （相机姿态噪声会整体平移画面，只是标注之间不相对移动）。 */
+  projectWorld(x, y, z) { return projectWorldRaw(x, y, z); },
+  /* 每个标注的【屏幕位置】与「标注图形相对地面锚点的屏幕偏移」。
+     标签抬升 0.085 m，在掠射角下这个抬升会投影成可观的屏幕偏移 ——
+     量出来才知道「叠加位置准不准」。 */
+  get arLabelsScreen() {
+    return anchors.map(a => {
+      const p = projectWorldRaw(a.pos.x, a.pos.y, a.pos.z);
+      const lp = projectWorldRaw(a.label.position.x, a.label.position.y, a.label.position.z);
+      return {
+        id: a.site.id, name: a.site.name,
+        anchorPx: p, labelPx: lp,
+        liftPx: Math.hypot(lp.px - p.px, lp.py - p.py),
+        liftM: a.label.position.y - a.pos.y,
+        anchorY: a.pos.y, score: a.score, visible: a.visible, rendered: a.ring.visible,
+        occluded: !!a.occluded, labelRendered: a.label.visible,
+      };
+    });
+  },
+  /* 地形垂直比例 —— 判断「虚拟地形和实物沙盘是否同一套比例」的依据 */
+  get reliefInfo() {
+    return {
+      reliefM, baseLift, maxElev: MAX_ELEV,
+      verticalScale: MAX_ELEV / reliefM,             // 1 : N
+      horizontalScale: HORIZ_SPAN_M / P.tableW,      // 1 : N
+      exaggeration: (HORIZ_SPAN_M / P.tableW) / (MAX_ELEV / reliefM),
+    };
+  },
+  /* 起伏统计（含实际渲染出的峰高）+ 按实物峰高反算 reliefScale */
+  get terrainStats() { return terrainStats(); },
+  setReliefFromPeak,
+  uvToWorld(uv) { const p = uvToWorld(uv); return { x: p.x, y: p.y, z: p.z }; },
+  /* 改水平视场角 —— 验收「视场角填错会错多少」时要扫这个 */
+  setFov(v) {
+    P.hFov = v;
+    const el = $('s-fov'); if (el) { el.value = v; $('v-fov').textContent = v + '°'; }
+    applyFov();
+    return P.hFov;
+  },
+  /* 改沙盘宽度并重建 —— 验证「垂直夸张与尺寸无关」时要扫这个 */
+  setTableW(v) {
+    P.tableW = v;
+    const el = $('s-table'); if (el) { el.value = v; $('v-table').textContent = v.toFixed(2) + ' m'; }
+    rebuildTerrain();
+    return P.tableW;
+  },
+  heightAtUv(uv) { return heightAtUv(uv); },
+  geoUv(lon, lat) { const u = geoUv(lon, lat); return { x: u.x, y: u.y }; },
+  /* 地点表（只读快照）。测试要用它独立复算「点地形找最近地点」的旧行为 ——
+     复用页面里的 pickAt 等于让被测对象批改自己的卷子。 */
+  get sites() { return SITES.map(s => ({ ...s })); },
+  get geoBounds() { return { ...GEO_BOUNDS }; },
+  /* 点击链路的探针：直接问「这个屏幕点会选中谁」 */
+  pickProbe(clientX, clientY) {
+    const before = { t: $('card-t').textContent, on: $('card').classList.contains('on') };
+    R.lastPickMiss = null;          // 先清掉上一次的 miss，否则读到陈旧值
+    R.lastPickSource = null;
+    pickAt(clientX, clientY);
+    return {
+      cardOn: $('card').classList.contains('on'),
+      title: $('card-t').textContent,
+      meta: $('card-m').textContent,
+      detailLen: $('card-d').textContent.length,
+      changed: $('card-t').textContent !== before.t || $('card').classList.contains('on') !== before.on,
+      lastPickMiss: R.lastPickMiss || null,
+      /* 'label' = 命中了标签本身（正常路径）；
+         'terrain' = 退回打地形命中；
+         'terrain-miss' = 打到了地形但附近没有收录地点。
+         有这三个值才能判断「点中」是走哪条路来的 ——
+         只报「弹出了什么」无法区分「打中标签」和「凑巧打中地形」。 */
+      source: R.lastPickSource || null,
+    };
+  },
+  closeCard() { $('card').classList.remove('on'); return true; },
+  /* 屏幕点 → 地形交点。用来做【叠加准确性的闭环验证】：
+       锚点世界坐标 → 投影到屏幕 → 从屏幕射线打回地形 → 应回到同一个点。
+     这一圈走通，说明「标注画在地形上的位置」和「它声称的世界坐标」一致。 */
+  raycastTerrainAt(clientX, clientY) {
+    if (!terrain) return null;
+    ndc.x = (clientX / innerWidth) * 2 - 1;
+    ndc.y = -(clientY / innerHeight) * 2 + 1;
+    raycaster.setFromCamera(ndc, cam3);
+    const hits = raycaster.intersectObject(terrain, false);
+    if (!hits.length) return null;
+    const p = hits[0].point;
+    return {
+      x: p.x, y: p.y, z: p.z,
+      uv: hits[0].uv ? { x: hits[0].uv.x, y: hits[0].uv.y } : null,
+    };
+  },
+  /* 竖直向下打一条射线，取【网格表面】在 (x,z) 处的高度。
+     用来和 heightAtUv() 的双线性高度对比 —— 两者不一致，
+     锚点就不在可见的地形面上（标注会浮起/陷入）。 */
+  terrainYAt(x, z) {
+    if (!terrain) return null;
+    const rc = new THREE.Raycaster(new THREE.Vector3(x, 5, z), new THREE.Vector3(0, -1, 0));
+    const hits = rc.intersectObject(terrain, false);
+    return hits.length ? hits[0].point.y : null;
+  },
+  /* ---------- 遮挡检查 ----------
+     从相机往锚点打一条射线，只关心锚点【之前】有没有地形。
+     标签是 depthTest:false + renderOrder:999 —— 永远画在最上层，
+     所以被山体挡住的地点，标签照样显示。这个出口就是用来量这件事的。 */
+  get arOcclusion() {
+    if (!terrain) return [];
+    const rc = new THREE.Raycaster();
+    return anchors.map(a => {
+      _v3.copy(a.pos).sub(cam3.position);
+      const dist = _v3.length();
+      _v3.normalize();
+      rc.set(cam3.position, _v3);
+      rc.near = 0;
+      rc.far = Math.max(0, dist - 0.004);      // 只查锚点之前
+      const hits = rc.intersectObject(terrain, false);
+      rc.far = Infinity;
+      return {
+        id: a.site.id, name: a.site.name,
+        visible: a.visible,
+        occluded: hits.length > 0,
+        blockerDist: hits.length ? Number(hits[0].distance.toFixed(4)) : null,
+        anchorDist: Number(dist.toFixed(4)),
+        /* 关键：可见 + 被遮挡 = 「标注显示在看不见的地方」 */
+        shownButOccluded: a.visible && hits.length > 0,
+      };
+    });
+  },
+  /* 传感器在「静止」时的真实上报频率 —— 判断会不会「一跳一跳」要用 */
+  get orientHz() { return Number((1e3 / Math.max(1, orientGapMs)).toFixed(2)); },
+  get orientGapMs() { return orientGapMs; },
+  /* ---------- 云台（台子）运动学 ----------
+     验证三件事：
+       ① off = 0 时位置对转角【完全不变】（纯旋转）
+       ② off ≠ 0 时位置 = pivot + R_y(θ)R_x(φ)·off（与解析式逐分量吻合）
+       ③ 相机位置变了，锚点世界坐标【仍然不变】（锚定与相机解耦） */
+  get gimbal() {
+    return {
+      on: GIMBAL.on, drive: GIMBAL.drive,
+      yawDeg: GIMBAL.yawDeg, pitchDeg: GIMBAL.pitchDeg,
+      pivot: { x: GIMBAL.pivot.x, y: GIMBAL.pivot.y, z: GIMBAL.pivot.z },
+      off: { x: GIMBAL.off.x, y: GIMBAL.off.y, z: GIMBAL.off.z },
+      offLen: GIMBAL.off.length(),
+      /* 陀螺仪驱动时的基准（未标定为 null）。
+         r0 = 标定时刻「光心 − 交点」；|r0| 就是转动时相机的平移半径。 */
+      hasGyroRef: !!gyroPosRef,
+      r0: gyroPosRef ? { x: gyroPosRef.r0.x, y: gyroPosRef.r0.y, z: gyroPosRef.r0.z } : null,
+      r0Len: gyroPosRef ? gyroPosRef.r0.length() : null,
+    };
+  },
+  setGimbalOn(v) { setGimbalOn(v); return GIMBAL.on; },
+  setGimbalDrive(d) { setGimbalDrive(d); return GIMBAL.drive; },
+  setGimbalAngles(yawDeg, pitchDeg) {
+    GIMBAL.yawDeg = yawDeg;
+    if (pitchDeg !== undefined && pitchDeg !== null) GIMBAL.pitchDeg = pitchDeg;
+    setGimbalSliders();
+    /* manual 模式下 render() 会自己更新；这里再主动算一次，
+       让测试不必等下一帧就能读到新位置。 */
+    updateCamPos();
+    return { yawDeg: GIMBAL.yawDeg, pitchDeg: GIMBAL.pitchDeg };
+  },
+  setGimbalOffset(x, y, z) {
+    GIMBAL.off.set(x, y, z);
+    syncGimbalPivot();
+    updateCamPos();
+    return { x: GIMBAL.off.x, y: GIMBAL.off.y, z: GIMBAL.off.z };
+  },
+  /* 解析式独立复算一遍（不复用页面里的 gimbalPoseAt），
+     用于交叉验证 —— 测试自己用四元数算，和页面实现比对。 */
+  gimbalPoseAt(yawDeg, pitchDeg) {
+    const q = new THREE.Quaternion()
+      .setFromAxisAngle(AXIS_Y, THREE.MathUtils.degToRad(yawDeg))
+      .multiply(new THREE.Quaternion().setFromAxisAngle(AXIS_X, THREE.MathUtils.degToRad(pitchDeg)));
+    const p = GIMBAL.off.clone().applyQuaternion(q).add(GIMBAL.pivot);
+    return {
+      pos: { x: p.x, y: p.y, z: p.z },
+      quat: { x: q.x, y: q.y, z: q.z, w: q.w },
+    };
+  },
+  captureGyroPosRef,
+  gimbalAnglesToCenter,
+  syncGimbalPivot,
+  updateCamPos,
+  /* 相机光轴在世界系里的方向 + 滚转（用于验证「两轴云台不会产生滚转」） */
+  get camBasis() {
+    const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(cam3.quaternion).normalize();
+    const up = new THREE.Vector3(0, 1, 0).applyQuaternion(cam3.quaternion).normalize();
+    const right = new THREE.Vector3(1, 0, 0).applyQuaternion(cam3.quaternion).normalize();
+    return {
+      fwd: { x: fwd.x, y: fwd.y, z: fwd.z },
+      up: { x: up.x, y: up.y, z: up.z },
+      right: { x: right.x, y: right.y, z: right.z },
+    };
+  },
+  /* 展项健壮性（常亮锁 / 上下文丢失 / 未捕获错误）—— 自动化验证要读 */
+  kioskInfo,
+  acquireWakeLock,
+  /* 现场判据 —— 让真机测试一轮就能答完「仰角安全吗 / α 是绝对的吗」 */
+  standTiltVerdict,
+  alphaAbsoluteVerdict,
+  get params() { return { ...P, tableD }; },
+  get limits() { return { DT_MAX_SEC, STILL_RATE_DPS, STILL_MIN_MS }; },
+  /* 姿态平滑的验证需要读相机四元数 */
+  get camQuat() {
+    const q = cam3.quaternion;
+    return { x: q.x, y: q.y, z: q.z, w: q.w };
+  },
+  /* 测试用：直接喂一个 devicemotion 事件，验证积分方向对不对 */
+  feedMotion(alpha, beta, gamma, dtSec) {
+    const saved = lastMotionT;
+    lastMotionT = performance.now() - dtSec * 1000;
+    onMotion({ rotationRate: { alpha, beta, gamma } });
+    lastMotionT = saved;
+    return { x: qBase.x, y: qBase.y, z: qBase.z, w: qBase.w };
+  },
+  get baseQuat() {
+    const q = qBase;
+    return { x: q.x, y: q.y, z: q.z, w: q.w };
+  },
+  alignNow,
+  get deviceQuat() {
+    const q = readDeviceQuat(new THREE.Quaternion());
+    return { x: q.x, y: q.y, z: q.z, w: q.w };
+  },
+  get alignQuat() {
+    const q = alignQuat;
+    return { x: q.x, y: q.y, z: q.z, w: q.w };
+  },
+  /* 截图对比用：强制相机姿态，传 null 恢复。见 render() 里的 overrideQuat */
+  setCamQuat(x, y, z, w) {
+    if (x === null) { overrideQuat = null; return; }
+    overrideQuat = new THREE.Quaternion(x, y, z, w).normalize();
+    cam3.quaternion.copy(overrideQuat);
+  },
+  /* 测试 / 演示用：把相机朝向设成「从相机位置出发，按 yaw / pitch 看出去」。
+     yaw = 0  → 看向沙盘中心
+     yaw > 0  → 向左转（相机右手方向为 +X，左为 -X）
+     pitch    → 向下俯角（度）；不传则沿用「看向中心」的俯角。
+     这是「转动平板」的语义化替身 —— 比直接写四元数可读得多，
+     也让测试能明确说「向左转 40°」，而不是一串小数。 */
+  aimAt(yawDeg = 0, pitchDeg = null) { return setAim(yawDeg, pitchDeg); },
+  clearAim() { overrideQuat = null; },
+  get overrideActive() { return !!overrideQuat; },
+  /* 桌面演示：拖动转视角 */
+  setManualLook,
+  get manualLookOn() { return manualLook; },
+  nudgeLook,
+  resetLook,
+  get lookAngles() { return { yawDeg: lookYawDeg, pitchDeg: lookPitchDeg, manual: manualLook }; },
+  /* 对齐的【滚转误差】（度）。0 = 滚转完全正确。
+
+     ⚠️ 不能用「相机 up 与设备 up 的夹角」当判据（我一开始就是这么写的，错的）：
+        设备的 up 一般【不在】垂直于光轴的平面内，纯俯仰修正也会改变这个夹角，
+        于是「水平正对」姿态就能报出 63.9° 的假误差 —— 那是俯仰，不是滚转。
+
+     ✅ 正确判据：把「设备 up」投影到【垂直于光轴】的平面上，再与「相机 up」比夹角。
+        这测的才是绕视轴的滚转。 */
+  get rollErrDeg() {
+    const qd = readDeviceQuat(new THREE.Quaternion());
+    const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(cam3.quaternion).normalize();
+    const upCam = new THREE.Vector3(0, 1, 0).applyQuaternion(cam3.quaternion).normalize();
+    const upDev = new THREE.Vector3(0, 1, 0).applyQuaternion(qd).normalize();
+    const proj = upDev.clone().addScaledVector(fwd, -upDev.dot(fwd));
+    if (proj.lengthSq() < 1e-9) return 180;   // 光轴与设备 up 平行，退化
+    proj.normalize();
+    return THREE.MathUtils.radToDeg(Math.acos(Math.min(1, Math.max(-1, upCam.dot(proj)))));
+  },
+};
+
+function screenAngleDeg() {
+  const a = (screen.orientation && typeof screen.orientation.angle === 'number')
+    ? screen.orientation.angle
+    : (typeof window.orientation === 'number' ? window.orientation : 0);
+  return a;
+}
+function isLandscape() {
+  return (screen.orientation && screen.orientation.type)
+    ? screen.orientation.type.indexOf('landscape') === 0
+    : innerWidth >= innerHeight;
+}
+
+const qDev = new THREE.Quaternion();
+
+/* ---------- 姿态的「基座」----------
+   设备系 → 世界系的旋转，【不含】q1 / q0 修正。
+
+   为什么要把这一层单独拿出来：
+   devicemotion 的 rotationRate 轴是【设备本体轴】，积分必须作用在这一层上。
+   如果把 q1（相机朝设备背面的约定）和 q0（屏幕旋转补偿）一起卷进积分，
+   每帧都会把这两个固定补偿也「转」一次，结果是姿态越积越歪。 */
+const qBase = new THREE.Quaternion();
+const _dq = new THREE.Quaternion();
+const _w = new THREE.Vector3();
+
+/* 用当前 deviceorientation 数据重置基座 —— 这是【绝对】姿态，没有累积漂移 */
+function resetBaseFromOrient() {
+  const a = THREE.MathUtils.degToRad(lastA);
+  const b = THREE.MathUtils.degToRad(lastB);
+  const g = THREE.MathUtils.degToRad(lastG);
+  qBase.setFromEuler(_e2.set(b, a, -g, 'YXZ'));
+}
+
+function readDeviceQuat(out) {
+  const o = THREE.MathUtils.degToRad(screenAngleDeg());
+  out.copy(qBase);
+  out.multiply(q1);
+  out.multiply(q0.setFromAxisAngle(zee, -o));
+  return out;
+}
+
+/* ---------- devicemotion：高频补充 ----------
+   问题：Android 静止时会把 deviceorientation 降到 ~1 Hz
+   （实测 124 秒只有 102 个事件 = 0.82 Hz），
+   视角每秒只更新一次 —— 用户看到的就是「转动平板但画面不动」。
+
+   devicemotion 的 rotationRate 频率高得多。做法是：
+     ① deviceorientation 到来 → 用绝对姿态【重置】qBase（校正累积误差）
+     ② devicemotion 到来     → 用角速度【积分推进】qBase（补足高频）
+   这样既有高频、又不会累积漂移。 */
+let haveMotion = false, motionN = 0, motionHz = 0;
+let motionFrames = 0, motionHzT0 = 0, lastMotionT = 0;
+let motionFusion = true;       // 设置面板可切换，方便 A/B 对比
+let motionGain = 1.0;          // 角速度增益，1.0 为标称值
+
+function onMotion(e) {
+  const rr = e.rotationRate;
+  if (!rr) return;
+  if (rr.alpha === null && rr.beta === null && rr.gamma === null) return;
+  if (!haveMotion) { haveMotion = true; }
+
+  motionN++;
+  const now = performance.now();
+  motionFrames++;
+  if (now - motionHzT0 >= 1000) {
+    motionHz = motionFrames * 1000 / (now - motionHzT0);
+    motionFrames = 0; motionHzT0 = now;
+  }
+
+  const dt = lastMotionT ? Math.min((now - lastMotionT) / 1000, 0.1) : 0;
+  lastMotionT = now;
+  if (!motionFusion || !haveOrient || dt <= 0) return;
+
+  /* rotationRate 分量对应设备本体轴（deg/s）：
+       alpha → 绕设备 Z（屏幕法线）
+       beta  → 绕设备 X（屏幕右向）
+       gamma → 绕设备 Y（屏幕上向）
+       注意：qBase 是由 Euler(b, a, -g, 'YXZ') 构造的中间四元数，
+       其与设备本体轴之间存在固定的 q1 = Rx(-90°) 变换（Y 轴映为 -Z 轴，Z 轴映为 +Y 轴）。
+       因此设备本体角速度 (beta, gamma, alpha) 映射到 qBase 的旋转矢量为：
+         X = beta, Y = alpha, Z = -gamma
+       这样在任何屏幕旋转角（横屏 90°/270°、竖屏 0°/180°）下，
+       qBase · q1 · q0(-o) 解算出的最终相机姿态角速度都完全等于真实物理旋转，
+       消除了横屏上下俯仰时产生的滚转错位。 */
+  _w.set(
+    THREE.MathUtils.degToRad(rr.beta || 0),
+    THREE.MathUtils.degToRad(rr.alpha || 0),
+    -THREE.MathUtils.degToRad(rr.gamma || 0)
+  );
+  const len = _w.length();
+  /* 只按【角速度】挡异常跳变（人转动很少超过 1500 °/s），
+     不要按「角度增量」挡 —— 事件间隔稍大时（低功耗门控下可达 1 s），
+     正常的 90 °/s 转动会产生 1.57 rad 的增量，用增量阈值会把正常转动也丢掉。 */
+  const lenDps = len * 57.29578;            // rad/s → °/s
+  if (dt > 0 && lenDps < 1500) {
+    const ang = len * dt * motionGain;
+    if (ang > 1e-6) {
+      _dq.setFromAxisAngle(_w.divideScalar(len), ang);
+      qBase.multiply(_dq);
+    }
+  }
+}
+
+/* 最近 2 秒的【瞬时】频率。
+   注意：静止时 Android 会把传感器降到 2~7 Hz 甚至暂停，
+   所以用户一点按钮（手不动）这里就会掉到 0 —— 这不是传感器坏了。
+   报告里必须同时给「平均频率」，否则会严重误判。 */
+function currentHz() {
+  const now = performance.now();
+  while (evTimes.length && now - evTimes[0] > 2000) evTimes.shift();
+  return evTimes.length / 2;
+}
+
+/* ---------- Three.js ---------- */
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.setClearColor(0x000000, 0);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.28;
+renderer.domElement.id = 'gl';
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+const cam3 = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.02, 60);
+
+scene.add(new THREE.HemisphereLight(0xd6ecff, 0x2c4a54, 3.1));
+const sun = new THREE.DirectionalLight(0xfff4dc, 2.0);
+sun.position.set(-1.4, 2.6, 1.2);
+scene.add(sun);
+const fill = new THREE.DirectionalLight(0x50baa3, 0.85);
+fill.position.set(1.6, 1.2, -1.8);
+scene.add(fill);
+
+const world = new THREE.Group();
+scene.add(world);
+
+const tableEdge = new THREE.LineSegments(
+  new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 0.001, 1)),
+  new THREE.LineBasicMaterial({ color: 0x4fd1e0, transparent: true, opacity: 0.55 })
+);
+world.add(tableEdge);
+
+/* 圆形沙盘边界线（外径 φ2800 + 内径 φ2750） */
+function makeCircleLine(radius, color, opacity) {
+  const pts = [];
+  for (let i = 0; i <= 128; i++) {
+    const t = (i / 128) * Math.PI * 2;
+    pts.push(new THREE.Vector3(Math.cos(t) * radius, 0, Math.sin(t) * radius));
+  }
+  const geo = new THREE.BufferGeometry().setFromPoints(pts);
+  const mat = new THREE.LineBasicMaterial({ color, transparent: true, opacity });
+  return new THREE.Line(geo, mat);
+}
+const circleOuter = makeCircleLine(1.40, 0x4fd1e0, 0.55);
+const circleInner = makeCircleLine(1.375, 0x4fd1e0, 0.30);
+world.add(circleOuter);
+world.add(circleInner);
+
+/* 视野落点高亮：把「相机此刻照到沙盘上的哪一块」画出来。
+   这块多边形 = 相机视锥 ∩ 沙盘面，是机制②（映射）的可视化产物。
+   注意它【不是】AR 标注本身 —— 它随相机移动，而标注不动。
+
+   ⚠️ 顶点缓冲【预分配、原地更新】，不每帧 new BufferGeometry：
+      第一版每帧 dispose + 新建，60 fps 下就是每秒 60 次几何体分配，
+      GC 压力明显 —— 而这个循环本来只是画一块几十个点的多边形。
+      配套把 frustumCulled 关掉：原地改顶点不会重算包围球，
+      留着视锥剔除会因为包围球过期而把网格错误地剔掉（时隐时现）。 */
+const AR_MAX_V = 128;                                  // 圆裁剪用 48 条边，128 足够
+const arRegionPos = new Float32Array((AR_MAX_V - 2) * 9);
+const arEdgePos = new Float32Array(AR_MAX_V * 3);
+
+const arRegion = new THREE.Mesh(
+  new THREE.BufferGeometry(),
+  new THREE.MeshBasicMaterial({
+    color: 0x3ddc97, transparent: true, opacity: 0.10,
+    side: THREE.DoubleSide, depthWrite: false,
+  })
+);
+arRegion.geometry.setAttribute('position', new THREE.BufferAttribute(arRegionPos, 3));
+arRegion.geometry.setDrawRange(0, 0);
+arRegion.frustumCulled = false;
+arRegion.renderOrder = 2;
+world.add(arRegion);
+
+const arRegionEdge = new THREE.LineLoop(
+  new THREE.BufferGeometry(),
+  new THREE.LineBasicMaterial({ color: 0x3ddc97, transparent: true, opacity: 0.5 })
+);
+arRegionEdge.geometry.setAttribute('position', new THREE.BufferAttribute(arEdgePos, 3));
+arRegionEdge.geometry.setDrawRange(0, 0);
+arRegionEdge.frustumCulled = false;
+arRegionEdge.renderOrder = 3;
+world.add(arRegionEdge);
+
+let terrain = null, terrainGeo = null;
+let heightGrid = null, meta = null;
+let labels = [], markers = [], labelsGroup = null;
+
+/* ---------- AR 锚定与视锥裁剪（核心机制）----------
+   需求：相机照到沙盘的哪一部分，就只显示那一部分的 AR 标注；
+        标点必须【锚定在沙盘坐标系】里 —— 相机怎么转，标点都不动。
+
+   拆成三个互相独立的机制（可以分别测试、分别失效）：
+     ① 锚定  anchors[]
+        每个标点的世界坐标只由 (lon, lat) 决定，buildSites() 建好后不再改写。
+        相机永远【不写】这些坐标 —— 这是「绝对静止」的充分条件。
+     ② 映射  visibleGroundPolygon()
+        相机视锥的 4 条侧棱与沙盘面 (y = 0) 求交，得到「此刻照到沙盘上的那块区域」；
+        裁剪到圆周后画成高亮 —— 把「视野↔沙盘」的映射关系显式可视化。
+     ③ 裁剪  updateArVisibility()
+        把锚点投影到 NDC，落在画面外的直接 visible = false。
+        不渲染 = 不占 draw call，也不会让人误以为「画面外还有个标签」。
+
+   为什么不用 THREE.Frustum：
+     Frustum.intersectsSphere() 只给布尔值，做不了滞回。这里要的是
+     「离画面边缘还有多远」这个【连续量】，所以直接算 NDC 边距。
+   为什么要滞回：
+     陀螺仪有噪声，标点恰好在视锥边缘时会逐帧闪烁（一亮一灭）。
+     进入阈值 +0.02、退出阈值 -0.10，中间 0.12 的死区让边缘稳定。 */
+const anchors = [];
+let arCull = true;          // 「视野裁剪」总开关（关掉可对比「一次性全渲染」）
+let arVisibleN = 0;         // 本帧可见的标点数
+let arOccludedN = 0;        // 本帧【因被地形遮挡】而隐藏的标点数（⊂ 视野内的那些）
+let arCoverage = 0;         // 视野覆盖沙盘面积的比例 0..1
+let terrainOn = true;       // 「隐藏地形」按钮的主开关
+let labelsOn = true;        // 「隐藏标签」按钮的主开关
+let arOcclusion = true;     // 「遮挡剔除」开关（在设置面板里，默认开）
+const AR_NDC_IN = 0.02;     // 进入画面：NDC 边距 > +0.02
+const AR_NDC_OUT = -0.10;   // 退出画面：NDC 边距 < -0.10（死区 0.12）
+
+/* ---------- 视场角：滑块是「水平视场角」，垂直由宽高比推出来 ---------- */
+function applyFov() {
+  const h = THREE.MathUtils.degToRad(P.hFov);
+  const v = 2 * Math.atan(Math.tan(h / 2) / cam3.aspect);
+  cam3.fov = THREE.MathUtils.radToDeg(v);
+  cam3.updateProjectionMatrix();
+  R.hFovDeg = P.hFov;
+  R.vFovDeg = Number(cam3.fov.toFixed(2));
+  R.aspect = Number(cam3.aspect.toFixed(4));
+}
+
+/* ---------- 地形 ---------- */
+function heightAtUv(uv) {
+  const W = meta.width, H = meta.height;
+  const px = clamp(uv.x * (W - 1), 0, W - 1);
+  const py = clamp((1 - uv.y) * (H - 1), 0, H - 1);
+  const x0 = Math.floor(px), y0 = Math.floor(py);
+  const x1 = Math.min(x0 + 1, W - 1), y1 = Math.min(y0 + 1, H - 1);
+  const fx = px - x0, fy = py - y0;
+  const a = Math.max(0, heightGrid[y0 * W + x0]);
+  const b = Math.max(0, heightGrid[y1 * W + x0]);
+  const d = Math.max(0, heightGrid[y0 * W + x1]);
+  const c = Math.max(0, heightGrid[y1 * W + x1]);
+  const e = fx + fy <= 1 ? a + (d - a) * fx + (b - a) * fy
+                         : c + (b - c) * (1 - fx) + (d - c) * (1 - fy);
+  return baseLift + e / MAX_ELEV * reliefM;
+}
+
+function geoUv(lon, lat) {
+  const mercator = deg => Math.log(Math.tan(Math.PI / 4 + deg * Math.PI / 360));
+  return new THREE.Vector2(
+    (lon - GEO_BOUNDS.west) / (GEO_BOUNDS.east - GEO_BOUNDS.west),
+    (mercator(lat) - mercator(GEO_BOUNDS.south)) / (mercator(GEO_BOUNDS.north) - mercator(GEO_BOUNDS.south))
+  );
+}
+
+function uvToWorld(uv) {
+  return new THREE.Vector3((uv.x - 0.5) * P.tableW, heightAtUv(uv), (0.5 - uv.y) * tableD);
+}
+
+/* uvToWorld 的逆（只需要 x/z —— y 是 heightAtUv 的结果，反解它没有意义）。
+   ⚠️ 这里【不涉及墨卡托】：geoUv(lon,lat) 已经把经纬度变成了 uv，
+      地形网格的 uv.x/uv.y 就是直接线性映射到 x/z 的。
+      在这里再套一次墨卡托是错的（会让遮挡判定整体偏掉）。 */
+function worldToUv(x, z, out) {
+  return (out || new THREE.Vector2()).set(x / P.tableW + 0.5, 0.5 - z / tableD);
+}
+
+/* ---------- 地形起伏统计：与【实物沙盘】对齐垂直比例的依据 ----------
+
+   实物是起伏模型时，虚拟地形的垂直比例必须和它一致 ——
+   不一致的话**整个叠加都错位**（不只是标注：虚拟地形本身就贴不上实物）。
+
+   实测当前：水平 1:196,071 / 垂直 1:12,272 ⇒ 垂直夸张 16.0×。
+   注意这个倍数**与沙盘尺寸无关**：reliefM 和 tableW 同比缩放，
+   所以 2.8 m 和 4.8 m 的沙盘夸张倍数都是 16.0×。
+   唯一的调节旋钮就是 reliefScale。
+
+   reliefScale 是【纯线性缩放】，所以现场只要量一个数：
+   实物最高点高出基准面多少毫米。峰高 = (数据最大高程/MAX_ELEV) × reliefM，
+   严格正比于 reliefScale，可以直接反解。 */
+/* 数据里的实际最大高程（≈1745 m，低于声明的 2076 —— 重采样把孤立尖峰平滑掉了）。
+   加载时算一次。反算 reliefScale 要用它，而不是用「当前渲染出的峰高」——
+   后者在 reliefScale=0（地形已拍平）时是 0，反解会除零。 */
+let dataMaxElev = 0;
+/* reliefScale = 1 时的峰高（m）。峰高 = 数据最大高程/MAX_ELEV × reliefM，
+   而 reliefM = BASE_RELIEF_PER_4_8M × (tableW/4.8) × reliefScale，所以严格正比。 */
+function peakAtReliefScale1() {
+  return (dataMaxElev / MAX_ELEV) * BASE_RELIEF_PER_4_8M * (P.tableW / 4.8);
+}
+
+function terrainStats() {
+  if (!terrain || !terrain.geometry) return null;
+  const pos = terrain.geometry.attributes.position;
+  let yMin = Infinity, yMax = -Infinity;
+  for (let i = 0; i < pos.count; i++) {
+    const y = pos.getY(i);
+    if (y < yMin) yMin = y;
+    if (y > yMax) yMax = y;
+  }
+  const peak = yMax - baseLift;                       // 最高点高出基准面
+  const scaleH = P.tableW / HORIZ_SPAN_M;             // 水平比例（模型/实物）
+  const scaleV = reliefM / MAX_ELEV;                  // 垂直比例（模型/实物）
+  return {
+    yMin, yMax, baseLift, reliefM,
+    peak, peakMm: peak * 1000,
+    /* 峰高 / 沙盘直径 —— 无量纲。现场一把尺子量「直径」和「最高点高度」
+       两个数就能比，不必换算公里。 */
+    peakPctOfDiameter: peak / P.tableW * 100,
+    peakAt1Mm: peakAtReliefScale1() * 1000,
+    dataMaxElev,
+    maxElev: MAX_ELEV, reliefScale: P.reliefScale,
+    scaleH, scaleV,
+    horizontalScale: 1 / scaleH,                      // 1 : N
+    verticalScale: 1 / scaleV,                        // 1 : N
+    exaggeration: scaleV / scaleH,                    // 垂直夸张倍数
+  };
+}
+
+/* 按【实物最高点实测高度】反算并套用 reliefScale。
+   峰高严格正比于 reliefScale ⇒ need = 实测峰高 / (reliefScale=1 时的峰高)。
+   用解析式算参考峰高，所以地形已经被拍平（reliefScale=0）也能反解回来。 */
+function setReliefFromPeak(peakMm) {
+  const cur = terrainStats();
+  if (!cur) return null;
+  const peakAt1Mm = cur.peakAt1Mm;
+  if (!(peakAt1Mm > 1e-6)) return null;
+  const need = peakMm / peakAt1Mm;
+  P.reliefScale = need;
+  const el = $('s-relief');
+  const clamped = Math.min(3.0, Math.max(0.4, need));
+  if (el) { el.value = clamped; $('v-relief').textContent = need.toFixed(2) + '×'; }
+  rebuildTerrain();
+  return { reliefScale: need, peakAt1Mm, sliderClamped: Math.abs(clamped - need) > 1e-9 };
+}
+
+function buildTerrain(colorTexture) {
+  const geo = new THREE.PlaneGeometry(P.tableW, tableD, meta.width - 1, meta.height - 1);
+  geo.rotateX(-Math.PI / 2);
+  const pos = geo.attributes.position;
+  for (let i = 0; i < pos.count; i++) {
+    pos.setY(i, baseLift + Math.max(0, heightGrid[i]) / MAX_ELEV * reliefM);
+  }
+  pos.needsUpdate = true;
+  geo.computeVertexNormals();
+
+  colorTexture.colorSpace = THREE.SRGBColorSpace;
+  colorTexture.anisotropy = Math.min(renderer.capabilities.getMaxAnisotropy(), 8);
+
+  terrain = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({
+    map: colorTexture, color: 0xffffff, alphaTest: 0.5,
+    roughness: 0.92, metalness: 0.0, side: THREE.DoubleSide,
+  }));
+  terrain.name = 'HunanTerrain';
+  world.add(terrain);
+  terrainGeo = geo;
+
+  tableEdge.geometry.dispose();
+  tableEdge.geometry = new THREE.EdgesGeometry(new THREE.BoxGeometry(P.tableW, 0.001, tableD));
+  tableEdge.position.y = baseLift * 0.5;
+
+  /* 更新圆形边界线 */
+  circleOuter.geometry.dispose();
+  const outerPts = [];
+  for (let i = 0; i <= 128; i++) {
+    const t = (i / 128) * Math.PI * 2;
+    outerPts.push(new THREE.Vector3(Math.cos(t) * (P.tableW / 2), baseLift + 0.002, Math.sin(t) * (P.tableW / 2)));
+  }
+  circleOuter.geometry = new THREE.BufferGeometry().setFromPoints(outerPts);
+  circleInner.geometry.dispose();
+  const innerPts = [];
+  const innerR = (P.tableW - 0.05) / 2; // 内径 = 外径 - 50mm（圆环宽 25mm × 2）
+  for (let i = 0; i <= 128; i++) {
+    const t = (i / 128) * Math.PI * 2;
+    innerPts.push(new THREE.Vector3(Math.cos(t) * innerR, baseLift + 0.002, Math.sin(t) * innerR));
+  }
+  circleInner.geometry = new THREE.BufferGeometry().setFromPoints(innerPts);
+}
+
+/* ---------- 标签 ---------- */
+function makeLabel(text, accent) {
+  const fs = 46, padX = 22, padY = 12;
+  const measure = document.createElement('canvas').getContext('2d');
+  const font = '600 ' + fs + 'px "PingFang SC","Microsoft YaHei",sans-serif';
+  measure.font = font;
+  const tw = Math.ceil(measure.measureText(text).width);
+  const c = document.createElement('canvas');
+  c.width = tw + padX * 2;
+  c.height = fs + padY * 2;
+  const g = c.getContext('2d');
+  g.font = font;
+  const r = 16, w = c.width, h = c.height;
+  g.beginPath();
+  if (g.roundRect) { g.roundRect(1.5, 1.5, w - 3, h - 3, r); }
+  else {
+    g.moveTo(1.5 + r, 1.5); g.lineTo(w - 1.5 - r, 1.5); g.quadraticCurveTo(w - 1.5, 1.5, w - 1.5, 1.5 + r);
+    g.lineTo(w - 1.5, h - 1.5 - r); g.quadraticCurveTo(w - 1.5, h - 1.5, w - 1.5 - r, h - 1.5);
+    g.lineTo(1.5 + r, h - 1.5); g.quadraticCurveTo(1.5, h - 1.5, 1.5, h - 1.5 - r);
+    g.lineTo(1.5, 1.5 + r); g.quadraticCurveTo(1.5, 1.5, 1.5 + r, 1.5); g.closePath();
+  }
+  g.fillStyle = 'rgba(6,24,30,0.86)'; g.fill();
+  g.strokeStyle = accent ? 'rgba(61,220,151,0.95)' : 'rgba(79,209,224,0.9)';
+  g.lineWidth = 3.5; g.stroke();
+  g.fillStyle = accent ? '#c8ffe6' : '#dcf6fb';
+  g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillText(text, w / 2, h / 2 + 2);
+
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: tex, transparent: true, depthTest: false, depthWrite: false, sizeAttenuation: true,
+  }));
+  const hh = 0.082;
+  sp.scale.set(w / h * hh, hh, 1);
+  sp.renderOrder = 999;
+  return sp;
+}
+
+function buildSites() {
+  labelsGroup = new THREE.Group();
+  world.add(labelsGroup);
+  anchors.length = 0;
+
+  SITES.forEach(site => {
+    const uv = geoUv(site.lon, site.lat);
+    const p = uvToWorld(uv);
+    /* ★ 锚点世界坐标：只由 (lon, lat) 决定，存一份独立的 Vector3。
+       这是「标点是否在视野内」的唯一依据，也是「锚定不变」的可验证证据
+       （测试会读 anchors[i].pos，转一圈相机后要求它逐分量不变）。 */
+    const anchorPos = new THREE.Vector3(p.x, p.y, p.z);
+
+    const ring = new THREE.Mesh(
+      new THREE.RingGeometry(0.014, 0.022, 24).rotateX(-Math.PI / 2),
+      new THREE.MeshBasicMaterial({ color: 0x4fd1e0, transparent: true, opacity: 0.95, side: THREE.DoubleSide })
+    );
+    ring.position.copy(anchorPos); ring.position.y += 0.001;
+    world.add(ring); markers.push(ring);
+
+    const beam = new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(anchorPos.x, anchorPos.y, anchorPos.z),
+        new THREE.Vector3(anchorPos.x, anchorPos.y + 0.05, anchorPos.z),
+      ]),
+      new THREE.LineBasicMaterial({ color: 0x4fd1e0, transparent: true, opacity: 0.7 })
+    );
+    world.add(beam); markers.push(beam);
+
+    const lb = makeLabel(site.name, false);
+    /* 标签位置 = 锚点 + 固定抬升。抬升量是常量，不含任何相机相关项。
+       （Sprite 会朝向相机转 —— 那是「朝向」，不是「位置」；
+         位置锚定才是需求要求的「与沙盘实体绑定」。） */
+    lb.position.set(anchorPos.x, anchorPos.y + 0.085, anchorPos.z);
+    lb.userData.site = site;
+    labelsGroup.add(lb);
+    labels.push(lb);
+
+    anchors.push({
+      site, pos: anchorPos,
+      ring, beam, label: lb,
+      visible: true, score: 0, occluded: false,
+    });
+  });
+}
+
+/* ---------- 机制②：相机视野 ↔ 沙盘区域映射 ----------
+   做法：拿一个足够大的地面四边形，用相机视锥的 4 个【侧面】去裁它。
+        裁完剩下的就是「相机此刻照到地面上的那块区域」。
+
+   ❌ 不要用「远平面 4 个角与地面求交」：
+      相机接近水平时，画面上半部分的视锥棱是【朝上】的，永远不与地面相交。
+      那种写法一旦遇到朝上的棱就判「没有视野」—— 而实际视野是延伸到地平线的。
+      （第一版就是这么写的，结果 coverage 恒为 0，还以为是矩阵没更新。）
+   ✅ 裁半空间没有这个毛病：顶面不与地面相交时，它自然不产生任何裁剪。 */
+const _arProj = new THREE.Matrix4();
+const _arV = new THREE.Vector3();
+const _arView = new THREE.Vector3();
+const _arFrustum = new THREE.Frustum();
+
+/* 用平面裁凸多边形（Sutherland–Hodgman，单平面版）。
+   three.js 的 Frustum 平面法线【朝内】，所以 distance >= 0 是「保留」侧。 */
+function clipPolyByPlane(poly, plane, groundY) {
+  const dist = (p) => plane.normal.x * p.x + plane.normal.y * groundY
+    + plane.normal.z * p.z + plane.constant;
+  const out = [];
+  for (let i = 0; i < poly.length; i++) {
+    const P = poly[i], Q = poly[(i + 1) % poly.length];
+    const dp = dist(P), dq = dist(Q);
+    if (dp >= 0) out.push(P);
+    if ((dp < 0 && dq > 0) || (dp > 0 && dq < 0)) {
+      const t = dp / (dp - dq);
+      out.push(new THREE.Vector3(
+        P.x + (Q.x - P.x) * t, groundY, P.z + (Q.z - P.z) * t));
+    }
+  }
+  return out;
+}
+
+function visibleGroundPolygon() {
+  const eye = cam3.position;
+  const groundY = baseLift;              // 沙盘面高度（地形基准面）
+  if (eye.y <= groundY + 1e-4) return null;   // 相机在沙盘面以下，谈不上「照到」
+
+  _arFrustum.setFromProjectionMatrix(_arProj);
+
+  const BIG = 50;                        // 50 m 足够覆盖任何真实沙盘视角
+  let poly = [
+    new THREE.Vector3(-BIG, groundY, -BIG),
+    new THREE.Vector3(BIG, groundY, -BIG),
+    new THREE.Vector3(BIG, groundY, BIG),
+    new THREE.Vector3(-BIG, groundY, BIG),
+  ];
+  /* 只裁 4 个【侧面】（planes[0..3] = 左/右/下/上）。
+     近平面在 2 cm 处，对 2 m 尺度的沙盘没有可见影响，省掉可以少一次退化风险。 */
+  for (let i = 0; i < 4; i++) {
+    poly = clipPolyByPlane(poly, _arFrustum.planes[i], groundY);
+    if (poly.length < 3) return null;
+  }
+  return poly;
+}
+
+/* 把凸多边形裁到圆内 —— Sutherland–Hodgman，用 48 条切线半平面逼近圆。
+   为什么不用「顶点按半径缩放」：那会把远处的直边压成弧，形状失真；
+   半平面裁剪保持直边，只是把超出圆周的部分切掉。 */
+function clipPolyToCircle(poly, R, N = 48) {
+  let out = poly;
+  for (let i = 0; i < N && out.length; i++) {
+    const a = (i / N) * Math.PI * 2;
+    const nx = Math.cos(a), nz = Math.sin(a);
+    const inp = out; out = [];
+    for (let j = 0; j < inp.length; j++) {
+      const P = inp[j], Q = inp[(j + 1) % inp.length];
+      const dp = P.x * nx + P.z * nz - R;
+      const dq = Q.x * nx + Q.z * nz - R;
+      if (dp <= 0) out.push(P);
+      if ((dp < 0 && dq > 0) || (dp > 0 && dq < 0)) {
+        const t = dp / (dp - dq);
+        out.push(new THREE.Vector3(
+          P.x + (Q.x - P.x) * t, P.y, P.z + (Q.z - P.z) * t));
+      }
+    }
+  }
+  return out;
+}
+
+/* 重建高亮网格 + 算覆盖率。覆盖率 = 可见多边形面积 / 沙盘圆面积。
+   顶点写进预分配的 Float32Array，只用 setDrawRange 控制画多少个 —— 零分配。 */
+function updateArRegion() {
+  const hide = () => {
+    arRegion.visible = false; arRegionEdge.visible = false; arCoverage = 0;
+  };
+  const poly = visibleGroundPolygon();
+  if (!poly) return hide();
+  let clipped = clipPolyToCircle(poly, P.tableW / 2);
+  if (clipped.length < 3) return hide();
+  if (clipped.length > AR_MAX_V) clipped = clipped.slice(0, AR_MAX_V);
+
+  const y = baseLift + 0.004;              // 抬一点，避免与地形 z-fighting
+  const c0 = clipped[0];
+  let w = 0;
+  for (let i = 1; i + 1 < clipped.length; i++) {
+    const ci = clipped[i], cj = clipped[i + 1];
+    arRegionPos[w++] = c0.x; arRegionPos[w++] = y; arRegionPos[w++] = c0.z;
+    arRegionPos[w++] = ci.x; arRegionPos[w++] = y; arRegionPos[w++] = ci.z;
+    arRegionPos[w++] = cj.x; arRegionPos[w++] = y; arRegionPos[w++] = cj.z;
+  }
+  arRegion.geometry.getAttribute('position').needsUpdate = true;
+  arRegion.geometry.setDrawRange(0, (clipped.length - 2) * 3);
+  arRegion.visible = terrainOn;
+
+  for (let i = 0; i < clipped.length; i++) {
+    arEdgePos[i * 3] = clipped[i].x;
+    arEdgePos[i * 3 + 1] = y;
+    arEdgePos[i * 3 + 2] = clipped[i].z;
+  }
+  arRegionEdge.geometry.getAttribute('position').needsUpdate = true;
+  arRegionEdge.geometry.setDrawRange(0, clipped.length);
+  arRegionEdge.visible = terrainOn;
+
+  /* 鞋带公式（在 XZ 平面） */
+  let a2 = 0;
+  for (let i = 0; i < clipped.length; i++) {
+    const A = clipped[i], B = clipped[(i + 1) % clipped.length];
+    a2 += A.x * B.z - B.x * A.z;
+  }
+  const area = Math.abs(a2) / 2;
+  const full = Math.PI * (P.tableW / 2) ** 2;
+  arCoverage = Math.min(1, area / full);
+}
+
+/* ---------- 机制③-b：遮挡剔除（锚点被山体挡住时，标签也必须消失）----------
+
+   为什么必须有这一步：标签是 `depthTest:false` + `renderOrder:999`，
+   **永远画在最上层**。好处是不会被地形切掉半张（可读性好），
+   代价是「锚点在山背后、标签却浮在山脊上」—— 那会让「绑定在沙盘实体上」
+   这个核心感知直接破功。实测 3/11（衡山 / 雪峰山脉 / 沅水）就是这个毛病。
+
+   做法：从相机沿视线向锚点步进，逐步比较「射线高度」与「地形高度」。
+
+   ⚠️ 为什么不用 `raycaster.intersectObject(terrain)`：
+      地形是 256×292 ≈ 15 万个三角形。11 个锚点 × 60 fps ≈ 每秒 1 亿次
+      三角形求交 —— 帧率会直接塌掉。
+      `heightAtUv` 是双线性查表，48 步 × 11 锚点 = 528 次查表/帧，可忽略。
+      （网格面与双线性面在顶点处相等、格内相差 <1 mm，见 probe-anchor-surface。）
+
+   ⚠️ 为什么 t 不取满 [0,1]：
+      锚点本来就落在地形面上（实测 Δy = 0.00 mm），t→1 时射线必然「贴上」地形，
+      会把自己判成遮挡物。所以留 2% 余量，并要求地形高出视线一定量才算遮挡。
+
+   ---------- 判据用【高度】还是【距离】----------
+   必须用高度。曾经用「网格首交点比锚点近 5 mm」当判据，那是【距离】——
+   掠射角下 5 mm 距离只对应亚毫米的高度差（0.1 rad 时 0.5 mm 起伏即可凑出
+   5 mm 距离差），于是把 1 mm 的起伏也报成遮挡，判据过敏。
+   实测：衡山视线只在地形上方 4.1 mm（可见），却因此被判成「被遮挡」。
+
+   ---------- 滞回 ----------
+   衡山那种 4 mm 余量的锚点就贴着阈值，陀螺仪 0.2° 的噪声（2 m 处约 7 mm
+   横向位移）足以让它逐帧一亮一灭。所以和 NDC 裁剪一样加死区：
+     进入遮挡：地形高出视线 > 8 mm
+     解除遮挡：地形低于视线 > 4 mm（即高出量 < −4 mm）
+   死区 12 mm ≈ 3 px，肉眼看不出来，但足够吃掉抖动。 */
+const OCC_STEPS = 48;
+const OCC_EPS_IN = 0.008;    // 进入遮挡：地形高出视线 > 8 mm
+const OCC_EPS_OUT = -0.004;  // 解除遮挡：地形高出视线 < −4 mm（死区 12 mm）
+const OCC_T0 = 0.02, OCC_T1 = 0.98;
+const _occUv = new THREE.Vector2();
+
+/* wasOccluded：上一帧的判定。滞回需要它 —— 不传就按「未遮挡」处理。 */
+function isAnchorOccluded(camPos, target, wasOccluded) {
+  const thr = wasOccluded ? OCC_EPS_OUT : OCC_EPS_IN;
+  const dx = target.x - camPos.x, dy = target.y - camPos.y, dz = target.z - camPos.z;
+  const halfW = P.tableW * 0.5, halfD = tableD * 0.5;
+  for (let i = 1; i <= OCC_STEPS; i++) {
+    const t = OCC_T0 + (OCC_T1 - OCC_T0) * (i / OCC_STEPS);
+    const x = camPos.x + dx * t, y = camPos.y + dy * t, z = camPos.z + dz * t;
+    /* 射线跑出地形平面范围时没有东西可挡它 —— 跳过。
+       （heightAtUv 会 clamp 到边缘，直接用会得到一个假高度。） */
+    if (Math.abs(x) > halfW || Math.abs(z) > halfD) continue;
+    if (heightAtUv(worldToUv(x, z, _occUv)) - y > thr) return true;
+  }
+  return false;
+}
+
+/* ---------- 机制③：基于视野的动态显示 / 隐藏 ----------
+   每帧对每个锚点算一个 NDC 边距 score：
+     score = min(1 - |ndc.x|, 1 - |ndc.y|)
+     score > 0  → 在画面内；= 1 → 正好在画面中心；< 0 → 出画。
+   滞回：已显示的容忍到 AR_NDC_OUT(-0.10)，未显示的必须到 AR_NDC_IN(+0.02)。
+   相机后方的锚点（视空间 z >= -near）直接判 -Infinity，避免透视除法翻号。 */
+function updateArVisibility() {
+  cam3.updateMatrixWorld();
+  cam3.matrixWorldInverse.copy(cam3.matrixWorld).invert();
+  _arProj.multiplyMatrices(cam3.projectionMatrix, cam3.matrixWorldInverse);
+
+  /* 遮挡只在「视野裁剪开着」时才参与 ——
+     关掉视野裁剪就是「一次性全渲染」对比模式，此时一并关掉遮挡，
+     否则 A/B 对比组不干净（关掉了却还少了 3 个，看不出是哪个机制在起作用）。 */
+  const needOcc = arCull && arOcclusion;
+
+  let n = 0, occN = 0;
+  for (const a of anchors) {
+    _arView.copy(a.pos).applyMatrix4(cam3.matrixWorldInverse);
+    let score;
+    if (_arView.z > -cam3.near) {
+      score = -Infinity;                    // 相机后方 / 贴脸
+    } else {
+      _arV.copy(a.pos).applyMatrix4(_arProj);
+      score = Math.min(1 - Math.abs(_arV.x), 1 - Math.abs(_arV.y));
+    }
+    a.score = score;
+    a.visible = a.visible ? score > AR_NDC_OUT : score > AR_NDC_IN;
+
+    /* 遮挡测试只在「视野内」才做 —— 出画的锚点本来就该藏，
+       再花 48 步查表算它是否被挡纯属浪费。
+       把上一帧的判定传进去，滞回才生效（否则每帧都从零重判，边缘会闪）。 */
+    a.occluded = (needOcc && a.visible)
+      ? isAnchorOccluded(cam3.position, a.pos, a.occluded) : false;
+
+    /* 主开关（地形/标签按钮）与裁剪结果取【与】——
+       按钮是「总闸」，裁剪是「自动闸」，两者都要开才显示。 */
+    const on = (arCull ? a.visible : true) && !a.occluded;
+    a.ring.visible = terrainOn && on;
+    a.beam.visible = terrainOn && on;
+    a.label.visible = labelsOn && on;
+    if (on) n++;
+    if (a.occluded) occN++;
+  }
+  arVisibleN = n;
+  arOccludedN = occN;
+  updateArRegion();
+  return n;
+}
+
+/* ================= 云台（台子）运动学 =================
+
+   现场约束（2026-10-14 确认）：
+     · pad 用夹具固定在台子上 —— 相对台子【不动】，没有手持、没有搬动；
+     · 台子底座固定在桌面 —— 底座位置【始终不变】；
+     · 台子本身可操作，能绕【垂直轴】水平转、绕【水平轴】上下转。
+   所以这不是「手持平板」，是【两轴云台】。
+
+   ---------- 唯一不动的点 ----------
+   刚体绕一根轴转，轴上的点不动。台子有两根轴，那么【两轴的交点】
+   是整台设备上唯一完全不动的点 —— 底座固定 ⇒ 交点世界坐标恒定。
+   于是 pad 光心的位置只能是：
+
+       camPos(θ, φ) = pivot + R_y(θ) · R_x(φ) · off
+
+     pivot : 两轴交点（世界坐标），恒定
+     off   : 交点到 pad 光心的偏移，在【俯仰台零位局部坐标系】里量
+     θ, φ  : 台子的水平转角 / 上下转角
+
+   ---------- 位置与朝向的关系（这是关键结论）----------
+   · 朝向【只跟两个角度有关】，与 off 无关：
+       camQuat(θ, φ) = R_y(θ) · R_x(φ) · qMount
+   · 位置【完全由 off 决定】：
+       off = 0 → camPos ≡ pivot，转多少度都不动 ⇒ 纯旋转（3DoF）
+       off ≠ 0 → 相机沿一段圆弧平移，平移量 = 2·|off|·sin(Δθ/2)
+
+   ⚠️ 为什么必须把 off 建模出来、不能默认它是 0：
+      虚拟相机的位置必须和真实相机一致，否则 AR 标注会【贴着画面漂】。
+      量化一下：off 造成横向平移 Δ 时，深度 L 处的标点角误差 ≈ Δ/L。
+      取 Δ = 0.10 m、L = 2.00 m → 2.86°；水平视场 65° 铺 1152 px 时
+      约 51 px —— 标注会明显偏离真实地物。所以 off 要么【设计成 0】，
+      要么【建模补偿】，没有第三条路。
+
+   ---------- 怎么拿到位置：两种驱动方式 ----------
+   A. drive='manual' —— 角度滑块直接驱动位置和朝向。
+      纯运动学演示 / 自动化验证用，可把「位置↔朝向」的关系直接看出来。
+
+   B. drive='gyro' —— 真机用。朝向仍然来自陀螺仪（现有链路不动），
+      位置由【陀螺仪的姿态增量】推出，不需要在台子上加编码器：
+
+        Δq = q_now · q_align⁻¹        （与 alignQuat 同源，同一个传感器）
+        camPos = pivot + Δq · r0      r0 = camPos_align − pivot
+
+      推导：位置 = pivot + R·off，而 R = Δq·R_align，
+      于是 pivot + Δq·(R_align·off) = pivot + Δq·r0。∎
+      这样只用到「对齐时刻的位置」这一个已知量，不需要知道 off 本身，
+      也不需要知道 qMount —— 台子装配公差不用测量。
+      off = 0 时 r0 = 0，该式退化为 camPos ≡ pivot，与现有代码完全一致。
+
+   ---------- 推荐做法 ----------
+   优先把【后摄光心】装在两轴交点上（off ≈ 0）：位置恒定、无需补偿、
+   也无需编码器。真机装配达不到就填 off，用 drive='gyro' 自动补偿。
+   ⚠️ 注意光心 ≠ 平板中心：后摄一般偏在平板一角/一边，两者差可达 10 cm 级。 */
+const GIMBAL = {
+  on: false,              // 云台模式总开关（关闭 = 原有固定位置行为）
+  drive: 'manual',        // 'manual' 角度驱动 | 'gyro' 陀螺仪增量驱动位置
+  yawDeg: 0,              // 水平转角：>0 向左（与 aimAt 同号约定）
+  pitchDeg: 0,            // 上下转角：0 = 光轴水平，>0 抬头，<0 低头
+  pivot: new THREE.Vector3(0, P.camHeight, P.camDist),  // 两轴交点（世界坐标）
+  off: new THREE.Vector3(0, 0, 0),                      // 交点 → pad 光心（m）
+};
+/* 交点的定义：把「零位时相机所在的位置」当作标称位置（由两个滑块决定），
+   交点 = 标称位置 − off。于是
+     off = 0   → 交点就在光心上，转多少度位置都不动（推荐装法）
+     off ≠ 0   → 光心偏离交点 |off|，转动时沿圆弧平移
+   这样改「相机高度/距离」滑块时交点会自动跟着走，不会和标称位置脱节。 */
+function syncGimbalPivot() {
+  GIMBAL.pivot.set(0, P.camHeight, P.camDist).sub(GIMBAL.off);
+  updateGimbalHelper();
+}
+/* 世界坐标里 +X = 相机右侧、−X = 相机左侧；+Z = 朝向 pad 的方向。
+   零位时 pad 看向 −Z（沙盘中心方向），up = +Y —— 正好是 three.js 相机的默认姿态，
+   所以「俯仰台零位」的安装四元数 qMount = 单位四元数，下面直接用 R_y·R_x。 */
+const AXIS_Y = new THREE.Vector3(0, 1, 0);   // 水平旋转轴（竖直）
+const AXIS_X = new THREE.Vector3(1, 0, 0);   // 上下旋转轴（水平，零位时垂直于视线）
+const _gqYaw = new THREE.Quaternion();
+const _gqPitch = new THREE.Quaternion();
+const _gqAll = new THREE.Quaternion();
+const _gqTmp = new THREE.Quaternion();
+const _gv = new THREE.Vector3();
+
+/* 纯函数：给定台子两轴角度，返回 pad 的位姿。
+   ★ 顺序是【外轴(偏航) × 内轴(俯仰)】—— 俯仰台挂在偏航台上，
+     不能反。反了的话「先俯仰再偏航」会让水平轴跟着倾斜，
+     得到的不是两轴云台、而是球铰。 */
+function gimbalPoseAt(yawDeg, pitchDeg, outPos, outQuat) {
+  _gqYaw.setFromAxisAngle(AXIS_Y, THREE.MathUtils.degToRad(yawDeg));
+  _gqPitch.setFromAxisAngle(AXIS_X, THREE.MathUtils.degToRad(pitchDeg));
+  _gqAll.copy(_gqYaw).multiply(_gqPitch);
+  if (outPos) outPos.copy(GIMBAL.off).applyQuaternion(_gqAll).add(GIMBAL.pivot);
+  if (outQuat) outQuat.copy(_gqAll);
+  return _gqAll;
+}
+
+/* 「看向沙盘中心」所需的两个角度。
+   由 R_y(θ)R_x(φ)·(0,0,−1) = normalize(−camPos) 解出：
+     φ = asin(n.y)、θ = atan2(−n.x, −n.z) */
+function gimbalAnglesToCenter(outPos) {
+  _gv.copy(outPos).negate().normalize();
+  const pitchDeg = THREE.MathUtils.radToDeg(Math.asin(THREE.MathUtils.clamp(_gv.y, -1, 1)));
+  const yawDeg = THREE.MathUtils.radToDeg(Math.atan2(-_gv.x, -_gv.z));
+  return { yawDeg, pitchDeg };
+}
+
+/* ---------- drive='gyro'：用陀螺仪姿态增量推位置 ----------
+   对齐（或手动标定）时刻记下基准，之后每帧算 Δq。 */
+let gyroPosRef = null;
+function captureGyroPosRef() {
+  gyroPosRef = {
+    r0: cam3.position.clone().sub(GIMBAL.pivot),
+    q0: cam3.quaternion.clone(),
+  };
+  return { r0: { x: gyroPosRef.r0.x, y: gyroPosRef.r0.y, z: gyroPosRef.r0.z } };
+}
+function updateCamPosFromGyro() {
+  if (!gyroPosRef) return false;
+  /* Δq = q_now · q_align⁻¹（世界系里的旋转增量） */
+  _gqTmp.copy(gyroPosRef.q0).invert();
+  _gqAll.copy(cam3.quaternion).multiply(_gqTmp);
+  cam3.position.copy(_gv.copy(gyroPosRef.r0).applyQuaternion(_gqAll)).add(GIMBAL.pivot);
+  return true;
+}
+
+/* ---------- 云台可视化：交点 + 两轴 + 「交点→光心」的偏移杆 ---------- */
+let gimbalHelper = null, gimbalRod = null;
+function buildGimbalHelper() {
+  if (gimbalHelper) return gimbalHelper;
+  gimbalHelper = new THREE.Group();
+  gimbalHelper.name = 'gimbalHelper';
+
+  const dot = new THREE.Mesh(
+    new THREE.SphereGeometry(0.022, 16, 12),
+    new THREE.MeshBasicMaterial({ color: 0xffd166 })
+  );
+  gimbalHelper.add(dot);
+  /* 竖直轴（水平旋转）—— 青；水平轴（上下旋转）—— 品红 */
+  const zero = new THREE.Vector3(0, 0, 0);   // 不用 ORIGIN：那个常量在文件后面才声明
+  gimbalHelper.add(new THREE.ArrowHelper(AXIS_Y, zero, 0.34, 0x4fd1e0, 0.06, 0.035));
+  gimbalHelper.add(new THREE.ArrowHelper(AXIS_X, zero, 0.30, 0xff6ec7, 0.055, 0.03));
+
+  /* 偏移杆：从交点指向 pad 光心。长度 = |off|，转起来会扫出一段圆弧 */
+  const rodGeo = new THREE.BufferGeometry().setFromPoints(
+    [new THREE.Vector3(), new THREE.Vector3(0, 1, 0)]);
+  gimbalRod = new THREE.Line(rodGeo, new THREE.LineBasicMaterial({ color: 0xffd166 }));
+  gimbalRod.frustumCulled = false;
+  gimbalHelper.add(gimbalRod);
+
+  gimbalHelper.visible = false;
+  scene.add(gimbalHelper);
+  return gimbalHelper;
+}
+function updateGimbalHelper() {
+  if (!gimbalHelper) return;
+  /* 整个 helper 组挂到交点上，内部坐标就都是「相对交点」的，
+     偏移杆的两端可以直接写成 0 和 (camPos − pivot)。 */
+  gimbalHelper.position.copy(GIMBAL.pivot);
+  const on = GIMBAL.on && GIMBAL.off.length() > 1e-6;
+  gimbalRod.visible = on;
+  if (!on) return;
+  _gv.copy(cam3.position).sub(GIMBAL.pivot);
+  const p = gimbalRod.geometry.attributes.position;
+  p.setXYZ(0, 0, 0, 0);
+  p.setXYZ(1, _gv.x, _gv.y, _gv.z);
+  p.needsUpdate = true;
+  gimbalRod.geometry.computeBoundingSphere();
+}
+
+/* ---------- 对齐 ---------- */
+const alignQuat = new THREE.Quaternion();
+let aligned = false, alignAlpha = null, alignT = 0, alignCount = 0;
+let firstAlign = null;
+
+function updateCamPos() {
+  if (GIMBAL.on && GIMBAL.drive === 'manual') {
+    gimbalPoseAt(GIMBAL.yawDeg, GIMBAL.pitchDeg, cam3.position, null);
+  } else if (GIMBAL.on && GIMBAL.drive === 'gyro') {
+    /* 位置由陀螺仪增量推出；基准还没标定时退回固定位置 */
+    if (!updateCamPosFromGyro()) cam3.position.set(0, P.camHeight, P.camDist);
+  } else {
+    cam3.position.set(0, P.camHeight, P.camDist);
+  }
+  cam3.updateMatrixWorld();
+  updateGimbalHelper();
+}
+
+/* ---------- 取景检查：地形四角是否都在视锥内 ----------
+   归一化比值 > 1 表示该方向超出画面。算法依据见文件上方 P 的注释。 */
+function cornerFractions(h, d) {
+  const L = Math.hypot(h, d);
+  if (L < 1e-6) return { hFrac: Infinity, vFrac: Infinity };
+  const fz = -d / L, fy = -h / L;          // 光轴（x 分量恒为 0）
+  const uy = d / L, uz = -h / L;           // 相机 up
+  const tanH = Math.tan(THREE.MathUtils.degToRad(P.hFov) / 2);
+  const tanV = Math.tan(THREE.MathUtils.degToRad(cam3.fov) / 2);
+  const hw = P.tableW / 2, hd = tableD / 2;
+  let hFrac = 0, vFrac = 0;
+  for (const sx of [-1, 1]) {
+    for (const sz of [-1, 1]) {
+      const dx = sx * hw, dy = -h, dz = sz * hd - d;
+      const depth = dy * fy + dz * fz;
+      if (depth <= 0.05) return { hFrac: Infinity, vFrac: Infinity };  // 角点跑到相机后面
+      const angH = Math.atan2(Math.abs(dx), depth);
+      const angV = Math.atan2(Math.abs(dy * uy + dz * uz), depth);
+      hFrac = Math.max(hFrac, Math.tan(angH) / tanH);
+      vFrac = Math.max(vFrac, Math.tan(angV) / tanV);
+    }
+  }
+  return { hFrac, vFrac };
+}
+
+function framingInfo() {
+  const r = cornerFractions(P.camHeight, P.camDist);
+  const worst = Math.max(r.hFrac, r.vFrac);
+  /* 相机落到沙盘范围内时角点会跑到相机背后，比值是 Infinity ——
+     这不是「超出很多」，而是「相机在沙盘里面」，要分开报。 */
+  const degenerate = !Number.isFinite(worst);
+  const fix = v => Number.isFinite(v) ? Number(v.toFixed(3)) : null;
+  return {
+    ok: !degenerate && worst <= 1,
+    degenerate,
+    worst: fix(worst),
+    hFrac: fix(r.hFrac),
+    vFrac: fix(r.vFrac),
+    axis: r.hFrac >= r.vFrac ? '左右' : '上下',
+  };
+}
+
+/* 按当前沙盘尺寸与视场角，解出「四角全入画」的最小相机距离（俯角固定）。
+   数值搜索比解析解稳 —— 约束是非线性的，直接扫一遍最省事。 */
+function autoFrame() {
+  const pitch = THREE.MathUtils.degToRad(P.framePitch);
+  const t = Math.tan(pitch);
+  const hd = tableD / 2;
+  for (let d = hd + 0.15; d <= 30; d += 0.01) {
+    const h = d * t;
+    const r = cornerFractions(h, d);
+    /* 留 4% 余量，避免刚好贴边 */
+    if (r.hFrac <= 0.96 && r.vFrac <= 0.96) {
+      return { camDist: Number(d.toFixed(2)), camHeight: Number(h.toFixed(2)) };
+    }
+  }
+  return null;
+}
+
+const UP_Y = new THREE.Vector3(0, 1, 0);
+const ORIGIN = new THREE.Vector3(0, 0, 0);
+const _m4 = new THREE.Matrix4();
+
+function alignNow(silent) {
+  if (!haveOrient) { flash('还没收到陀螺仪数据'); return false; }
+  updateCamPos();
+  /* 云台 drive='gyro' 的基准必须在【对齐这一刻】标定 ——
+     因为只有对齐时我们才确信相机真的在标称位置上（r0 才算得对）。
+     放在别处标定（比如「切到 gyro 驱动的那一下」）会取到一个转过角的
+     陈旧位置，r0 就带上一段多余的平移，之后每一帧的位置都是错的。
+     实测后果：off=0（本该位置恒定）也会漂 8.0 cm。 */
+  if (GIMBAL.on && GIMBAL.drive === 'gyro') captureGyroPosRef();
+  const q = readDeviceQuat(qDev.clone());
+  const target = new THREE.Vector3(0, 0, 0).sub(cam3.position).normalize();
+
+  /* ---------- 世界系航向对齐（彻底消除俯仰引发的滚转错位）----------
+     在【世界坐标系】中做水平航向对齐（左乘 alignQuat · qDev）。
+     世界 Y 轴是铅垂轴，绕世界 Y 轴的航向对齐严格保持水平面平行，
+     使平板在任何角度下的上下俯仰都 100% 保持为纯俯仰，滚转误差恒为 0。 */
+  const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(q);
+  const yawAngle = Math.atan2(fwd.x, -fwd.z);
+  alignQuat.setFromAxisAngle(UP_Y, yawAngle);
+
+  aligned = true;
+  snapPose = true;      // 本次对齐直接吸附，不走 slerp（见 render 里的说明）
+  alignCount++;
+  alignAlpha = alpha;
+  alignT = performance.now();
+  if (!firstAlign) firstAlign = {
+    qDev: q.clone(), alignQuat: alignQuat.clone(),
+    /* 记下对齐时刻的原始角度与屏幕方向 —— 排查「进去后姿态突变」时要靠这些对比 */
+    alpha: lastA, beta: lastB, gamma: lastG, screenAngle: screenAngleDeg(),
+  };
+  $('alignhint').classList.remove('on');
+  if (!silent) flash('已对齐：地形中心锁在正前方');
+  return true;
+}
+
+/* 漂移归零：把当前设备姿态当作「首次对齐时的姿态」。
+   等价于 qNow · alignQuat_new = qDev₀ · alignQuat₀
+   —— 只适用于平板本身没被动过、纯粹是陀螺仪漂了的情况。 */
+function zeroDrift() {
+  if (!haveOrient || !firstAlign) { flash('先做一次对齐'); return false; }
+  const qNow = readDeviceQuat(new THREE.Quaternion());
+  alignQuat.copy(firstAlign.alignQuat).multiply(firstAlign.qDev).multiply(qNow.clone().invert());
+  alignAlpha = alpha;
+  alignT = performance.now();
+  alignCount++;
+  flash('已按「平板未移动」前提归零漂移');
+  return true;
+}
+
+/* 原来这里有个 maybeAutoAlign()：延迟 1200 ms 再对齐。
+   已删除 —— 延迟本身就是「进入一瞬间模型转一下」的原因，见 onOrient 上方的说明。
+   现在第一次拿到姿态就对齐。 */
+
+/* ---------- 交互：点击选地点 ----------
+
+   ⚠️ 必须先打【标签本身】，再退回打地形。
+   第一版只打地形（拿命中点的 uv 找最近的地点），实测 11 个标签只有 2 个能点中：
+   标签抬高 0.085 m，掠射角下这个抬升会把「标签背后的地形 uv」推离锚点很远 ——
+   4 个直接超出 0.12 上限（提示「附近没有收录地点」），
+   5 个落到了【隔壁地点】的 uv 附近 → 点 A 弹出 B。这是最坏的一类 bug：
+   用户看到的是「点了张家界，弹出沅水」，比点不动更伤信任。
+
+   用户点的是标签，标签就该是命中目标 —— 语义上本来就该先打它。
+   打不中标签时才退回「点地形找最近地点」（这时用户是在点地面，不是点标签）。 */
+const raycaster = new THREE.Raycaster();
+const ndc = new THREE.Vector2();
+let selectedSite = null, downPt = null, highlightRing = null;
+
+function pickAt(clientX, clientY) {
+  if (!terrain) return;
+  ndc.x = (clientX / innerWidth) * 2 - 1;
+  ndc.y = -(clientY / innerHeight) * 2 + 1;
+  raycaster.setFromCamera(ndc, cam3);
+
+  /* ① 标签（Sprite）。只打【本帧可见】的 —— 被裁剪或被遮挡的标签
+        在屏幕上根本看不见，不该还能点中。 */
+  const visLabels = labels.filter(l => l.visible);
+  if (visLabels.length) {
+    const lh = raycaster.intersectObjects(visLabels, false);
+    if (lh.length) {
+      const s = lh[0].object.userData.site;
+      if (s) { selectSite(s, 0, 'label'); return; }
+    }
+  }
+
+  /* ② 退回打地形 */
+  const hits = raycaster.intersectObject(terrain, false);
+  if (!hits.length || !hits[0].uv) { flash('没点到地形上'); return; }
+  const uv = hits[0].uv;
+  let best = null, bestD = Infinity;
+  for (const s of SITES) {
+    const suv = geoUv(s.lon, s.lat);
+    const d = Math.hypot(suv.x - uv.x, suv.y - uv.y);
+    if (d < bestD) { bestD = d; best = s; }
+  }
+  if (!best) return;
+
+  /* 距离上限：只收 11 个地点，分布稀疏。
+     没有上限的话，点在地形正中间也会「选中」一个几百公里外的地点 ——
+     实测出现过 uv 距离 0.2846（≈ 28% 地形宽度 ≈ 0.5 m）还照样弹卡的荒唐结果。
+     0.12 大约对应 20 cm，比这更远就明确告诉用户「附近没有收录地点」。 */
+  const MAX_UV_DIST = 0.12;
+  if (bestD > MAX_UV_DIST) {
+    R.lastPickMiss = { nearest: best.name, uvDistance: Number(bestD.toFixed(4)) };
+    R.lastPickSource = 'terrain-miss';
+    flash('这里附近没有收录的地点（最近的「' + best.name + '」还有 ' +
+          (bestD * 100).toFixed(0) + '% 地形宽度）');
+    return;
+  }
+
+  selectSite(best, bestD, 'terrain');
+}
+
+/* 选中一个地点：写状态 + 弹卡 + 高亮。标签路径与地形路径共用 ——
+   两处各写一份的话，加一个字段就会漏一处（本项目的常客坑）。 */
+function selectSite(site, uvDistance, source) {
+  selectedSite = site;
+  R.selectedSiteId = site.id;
+  R.selectedSiteName = site.name;
+  R.selectedUvDistance = Number(uvDistance.toFixed(4));
+  R.lastPickSource = source;
+  R.lastPickMiss = null;
+  showCard(site);
+  highlight(site);
+}
+
+
+function highlight(site) {
+  if (!highlightRing) {
+    highlightRing = new THREE.Mesh(
+      new THREE.RingGeometry(0.026, 0.038, 32).rotateX(-Math.PI / 2),
+      new THREE.MeshBasicMaterial({ color: 0x3ddc97, transparent: true, opacity: 1, side: THREE.DoubleSide })
+    );
+    world.add(highlightRing);
+  }
+  const p = uvToWorld(geoUv(site.lon, site.lat));
+  highlightRing.position.copy(p);
+  highlightRing.position.y += 0.003;
+  highlightRing.visible = true;
+}
+
+function showCard(site) {
+  $('card-t').textContent = site.name;
+  $('card-m').textContent = site.kind + ' · ' + site.anchor + ' · ' + site.role;
+  $('card-d').innerHTML =
+    '<div style="margin-bottom:5px">' + site.summary + '</div>' +
+    '<div style="color:#9dc4cd"><b>成因</b>　' + site.mechanism + '</div>' +
+    '<div style="color:#9dc4cd;margin-top:4px"><b>过程</b>　' + site.process + '</div>' +
+    '<div style="color:#9dc4cd;margin-top:4px"><b>与流域关系</b>　' + site.relation + '</div>' +
+    '<div style="color:#9dc4cd;margin-top:4px"><b>科学看点</b>　' + site.science + '</div>';
+  $('card').classList.add('on');
+  setRow('t-site', site.name);
+}
+$('card-x').addEventListener('click', () => $('card').classList.remove('on'));
+
+renderer.domElement.addEventListener('pointerdown', e => {
+  downPt = { x: e.clientX, y: e.clientY, t: performance.now() };
+  if (manualLook) {
+    onLookDown(e);
+    try { renderer.domElement.setPointerCapture(e.pointerId); } catch (_) {}
+  }
+});
+renderer.domElement.addEventListener('pointermove', e => { onLookMove(e); });
+renderer.domElement.addEventListener('pointercancel', e => onLookUp(e));
+renderer.domElement.addEventListener('pointerup', e => {
+  onLookUp(e);
+  if (!downPt) return;
+  const moved = Math.hypot(e.clientX - downPt.x, e.clientY - downPt.y);
+  const dt = performance.now() - downPt.t;
+  downPt = null;
+  /* moved < 16 才算「点击」。所以拖动转视角松手不会误弹卡片。 */
+  if (moved < 16 && dt < 600) pickAt(e.clientX, e.clientY);
+});
+
+/* 键盘也能转 —— 方向键左右转视角、上下调俯角，R 归零。
+   比拖动更适合精细比对「同一个朝向，标注在不在」。 */
+addEventListener('keydown', e => {
+  if (!manualLook && e.key !== 'l' && e.key !== 'L') return;
+  const step = e.shiftKey ? 1 : 5;
+  let hit = true;
+  if (e.key === 'ArrowLeft') nudgeLook(step, 0);
+  else if (e.key === 'ArrowRight') nudgeLook(-step, 0);
+  else if (e.key === 'ArrowUp') nudgeLook(0, -step);
+  else if (e.key === 'ArrowDown') nudgeLook(0, step);
+  else if (e.key === 'r' || e.key === 'R') resetLook();
+  else if (e.key === 'l' || e.key === 'L') setManualLook(!manualLook);
+  else hit = false;
+  if (hit) e.preventDefault();
+});
+
+/* ---------- 渲染循环 ---------- */
+let totalFrames = 0, fpsFrames = 0, fpsT0 = 0, fps = 0, hudT0 = 0, lastDriftWarn = 0;
+let peakHz = 0;      // 瞬时频率的历史峰值 —— 用来说明「传感器在需要时能跑多快」
+
+const qGoal = new THREE.Quaternion();
+let lastRenderT = 0;
+
+/* 调试出口：强制相机姿态（截图对比用）。
+   设成 null 恢复正常。用于把「旧对齐算法」的结果和「新算法」在
+   同一设备姿态下渲染出来做像素级对比 —— 光看数字说服力不够。 */
+let overrideQuat = null;
+
+/* ---------- 「按 yaw / pitch 看出去」的共用实现 ----------
+   aimAt（测试用）和手动转视角（桌面演示用）都用这一个，
+   避免两处各写一份三角函数、改一处漏一处。
+     yaw   = 0  → 看向沙盘中心；>0 → 向左转
+     pitch = 向下俯角（度）；传 null 则沿用「看向中心」的俯角 */
+function setAim(yawDeg, pitchDeg) {
+  const eye = cam3.position;
+  const horiz = Math.hypot(eye.x, eye.z);
+  /* 相机 → 沙盘中心 的方向是 (-eye.x, -eye.z)：写 atan2(eye.x, eye.z)
+     会得到「背离中心」的方位（相机在 +Z 时算成 0 而不是 π），
+     于是 yaw=0 反而看向沙盘外侧。这个坑踩过一次。 */
+  const baseYaw = Math.atan2(-eye.x, -eye.z);
+  const basePitch = THREE.MathUtils.radToDeg(Math.atan2(eye.y, horiz));
+  const yaw = baseYaw + THREE.MathUtils.degToRad(yawDeg);
+  const pitch = THREE.MathUtils.degToRad(pitchDeg === null ? basePitch : pitchDeg);
+  const dir = new THREE.Vector3(
+    Math.sin(yaw) * Math.cos(pitch),
+    -Math.sin(pitch),
+    Math.cos(yaw) * Math.cos(pitch)
+  );
+  _m4.lookAt(eye, eye.clone().add(dir), UP_Y);
+  overrideQuat = new THREE.Quaternion().setFromRotationMatrix(_m4);
+  cam3.quaternion.copy(overrideQuat);
+  return { yawDeg, pitchDeg: THREE.MathUtils.radToDeg(pitch) };
+}
+
+/* ---------- 桌面演示：拖动转视角 ----------
+   真机靠陀螺仪转视角；桌面 / 预览环境没有陀螺仪，
+   就没有任何办法把「转向哪边只显示哪边」看出来。
+   开启后：在画面上拖动 = 转动平板，语义与 aimAt 完全一致
+   （yaw>0 向左，pitch 为俯角）。 */
+let manualLook = false;
+let lookYawDeg = 0, lookPitchDeg = null;   // null = 用「看向中心」的俯角
+let lookDrag = null;
+function setManualLook(on) {
+  manualLook = !!on;
+  if (manualLook) { lookYawDeg = 0; lookPitchDeg = null; setAim(lookYawDeg, lookPitchDeg); }
+  else overrideQuat = null;
+  /* 手动模式下姿态由拖动决定，陀螺仪根本不参与 → 「正在读取陀螺仪并锁定视角…」
+     这条提示就是错的，而且无陀螺仪时它会【永久】停在画面正中挡着地形。
+     关掉手动模式时按「是否已对齐」原样恢复。 */
+  const ah = $('alignhint');
+  if (ah) {
+    if (manualLook) ah.classList.remove('on');
+    else if (!aligned) ah.classList.add('on');
+  }
+  const b = $('b-look'); if (b) b.textContent = '拖动转视角：' + (manualLook ? '开' : '关');
+  document.body.classList.toggle('look-mode', manualLook);
+  return manualLook;
+}
+function nudgeLook(dYawDeg, dPitchDeg) {
+  if (!manualLook) setManualLook(true);
+  lookYawDeg += dYawDeg;
+  const eye = cam3.position;
+  const basePitch = THREE.MathUtils.radToDeg(Math.atan2(eye.y, Math.hypot(eye.x, eye.z)));
+  if (lookPitchDeg === null) lookPitchDeg = basePitch;
+  lookPitchDeg = Math.max(-80, Math.min(80, lookPitchDeg + dPitchDeg));
+  setAim(lookYawDeg, lookPitchDeg);
+  return { yawDeg: lookYawDeg, pitchDeg: lookPitchDeg };
+}
+function resetLook() { lookYawDeg = 0; lookPitchDeg = null; if (manualLook) setAim(0, null); }
+
+/* 拖动 = 转视角；位移小于阈值则交给 pickAt（见 pointerup 里的判定）。
+   灵敏度：横向 0.25°/px，纵向 0.20°/px —— 1152 px 拖满约 288°，
+   刚好能扫完整个沙盘还留余量。 */
+let lookPointerId = null;
+function onLookDown(e) {
+  if (!manualLook) return false;
+  lookPointerId = e.pointerId;
+  lookDrag = { x: e.clientX, y: e.clientY, yaw: lookYawDeg, pitch: lookPitchDeg };
+  document.body.classList.add('look-dragging');
+  return true;
+}
+function onLookMove(e) {
+  if (!manualLook || !lookDrag || e.pointerId !== lookPointerId) return false;
+  const dYaw = -(e.clientX - lookDrag.x) * 0.25;
+  const eye = cam3.position;
+  const basePitch = THREE.MathUtils.radToDeg(Math.atan2(eye.y, Math.hypot(eye.x, eye.z)));
+  const p0 = lookDrag.pitch === null ? basePitch : lookDrag.pitch;
+  const dPitch = (e.clientY - lookDrag.y) * 0.20;
+  lookYawDeg = lookDrag.yaw + dYaw;
+  lookPitchDeg = Math.max(-80, Math.min(80, p0 + dPitch));
+  setAim(lookYawDeg, lookPitchDeg);
+  return true;
+}
+function onLookUp(e) {
+  if (e.pointerId === lookPointerId) { lookPointerId = null; lookDrag = null; }
+  document.body.classList.remove('look-dragging');
+}
+
+/* 对齐时直接吸附（不走 slerp）—— 保证模型第一帧就是最终姿态 */
+let snapPose = false;
+/* 陀螺仪迟迟不来时的兜底：按固定视角先把模型显示出来，总比空白好 */
+let fallbackShow = false;
+/* 对齐前「只清屏不渲染」的帧数（调试出口用，见 window.__gyro.state） */
+let clearedFrames = 0;
+
+function render() {
+  totalFrames++;
+  fpsFrames++;
+  const now = performance.now();
+  /* 帧间隔（秒），用于时间无关的姿态平滑。上限 0.1 s 防止切后台回来时跳一大步 */
+  const dtSec = lastRenderT ? Math.min((now - lastRenderT) / 1000, 0.1) : 1 / 60;
+  lastRenderT = now;
+  if (now - fpsT0 >= 1000) { fps = fpsFrames * 1000 / (now - fpsT0); fpsFrames = 0; fpsT0 = now; }
+
+  if (overrideQuat) {
+    cam3.quaternion.copy(overrideQuat);
+    /* 强制姿态的路径也要跑裁剪 —— 自动化测试就是靠 setCamQuat() 把相机
+       转到左/右，再读 anchors[i].visible 来验证「转向哪边只显示哪边」。 */
+    updateArVisibility();
+    updateHud(now);
+    renderer.render(scene, cam3);
+    return;
+  }
+
+  /* ---------- 云台角度驱动（drive='manual'）----------
+     位置和朝向【都由两个角度决定】，与陀螺仪无关 —— 这是纯运动学演示，
+     用来把「位置↔朝向」的关系直接看出来，也是自动化验证的入口。
+     放在对齐门槛之前：它本来就不依赖陀螺仪，没理由等对齐。 */
+  if (GIMBAL.on && GIMBAL.drive === 'manual') {
+    gimbalPoseAt(GIMBAL.yawDeg, GIMBAL.pitchDeg, cam3.position, cam3.quaternion);
+    cam3.updateMatrixWorld();
+    updateGimbalHelper();
+    updateArVisibility();
+    updateHud(now);
+    renderer.render(scene, cam3);
+    return;
+  }
+
+  /* ---------- 对齐之前【不渲染模型】----------
+     对齐前相机是固定视角（up = 世界竖直），对齐后是设备视角（up = 设备 up），
+     两套滚转约定不同。如果这里照常渲染，用户就会先看到一个滚转不对的模型，
+     再眼睁睁看它「转过去」—— 也就是真机录屏里的那个现象。
+     干脆不给中间态：对齐前只留相机画面，模型在对齐那一刻【直接出现在最终姿态】。
+     陀螺仪迟迟不来时由 fallbackShow 兜底（见启动流程里的 3 秒定时器）。 */
+  if (!aligned && !fallbackShow) {
+    clearedFrames++;
+    renderer.clear();
+    updateHud(now);
+    return;
+  }
+
+  if (haveOrient && aligned) {
+    readDeviceQuat(qDev);
+    qGoal.copy(alignQuat).multiply(qDev);
+    /* ---------- 姿态平滑 ----------
+       静止时 Android 把 deviceorientation 降到 ~1 Hz（实测 124 秒只有 102 个事件），
+       直接 copy 会让视角「一跳一跳」。用 slerp 按帧率做指数平滑，
+       时间常数 τ = smoothMs：k = 1 - exp(-dt/τ)。
+       τ 越大越顺滑但延迟越大；设 0 则直通（对比用）。
+       注意这里不能用固定系数 —— 帧率变化时固定系数会改变手感。
+
+       但【对齐那一刻必须吸附】：否则第一帧还会从旧姿态平滑过去，
+       等于把「一次跳变」换成了「一次 140 ms 的滑动」，观感上照样是「转了一下」。 */
+    if (snapPose || P.smoothMs <= 0) {
+      cam3.quaternion.copy(qGoal);
+      snapPose = false;
+    } else {
+      const k = 1 - Math.exp(-dtSec * 1000 / P.smoothMs);
+      cam3.quaternion.slerp(qGoal, k);
+    }
+  }
+
+  /* 姿态更新完再裁剪 —— 顺序不能反：裁剪依赖当前帧的相机姿态 */
+  /* 云台 drive='gyro'：位置必须【在姿态之后】推 —— 它依赖本帧的相机四元数。
+     顺序写反的话位置永远滞后一帧，转动时会看到标注在画面上抖。 */
+  if (GIMBAL.on && GIMBAL.drive === 'gyro') updateCamPos();
+  updateArVisibility();
+  updateHud(now);
+  renderer.render(scene, cam3);
+}
+
+function updateHud(now) {
+  if (now - hudT0 < 200) return;
+  hudT0 = now;
+
+  /* 对齐 + 取景状态合并在一格 —— 取景是最需要即时反馈的东西，
+     地形撑出画面时用户不用猜是「参数不对」还是「地形本来就该这么大」。 */
+  const fr = framingInfo();
+  R.framing = fr;
+  setHtml('t-align',
+    (aligned ? badge('已对齐', 'ok') : badge('未对齐', 'warn')) +
+    (fr.ok ? ' ' + badge('取景✓', 'ok')
+           : ' ' + badge(fr.degenerate ? '相机在沙盘内' : fr.axis + '超' + fr.worst.toFixed(2) + '×', 'bad')));
+  setHtml('t-orient', haveOrient ? badge('就绪', 'ok') : badge('无数据', 'bad'));
+  /* 支架仰角实时徽章 —— 现场装支架时就能看到「这个角度行不行」，
+     不用等到生成报告。画面在任意仰角都对，这条是给遥测可信度用的。 */
+  const st = standTiltVerdict();
+  setHtml('t-tilt', st.verdict === 'no-data' ? badge('—', 'idle')
+    : badge('β ' + st.beta + '°' + (st.amp === Infinity ? ' · ∞' : ' · ' + st.amp.toFixed(1) + '×'),
+            st.verdict === 'ok' ? 'ok' : st.verdict === 'warn' ? 'warn' : 'bad'));
+
+  /* 「朝向漂移」格显示【静止漂移率】—— 只有它是真正反映陀螺零偏的量。
+     （原来的实现把「相对对齐的偏转角 / 时长」当漂移，用户一转平板就爆表，
+      实测报出过 -3.9 °/min 的假数字，完全不可用。） */
+  const sd = staticDriftPerMin();
+  R.yawFromAlignDeg = Number((yawFromAlign() ?? 0).toFixed(3));
+  R.staticDriftPerMin = sd === null ? null : Number(sd.toFixed(3));
+  if (sd === null) {
+    setHtml('t-drift', badge(staticDriftTxt(), 'idle'));
+  } else {
+    const a = Math.abs(sd);
+    setHtml('t-drift', badge(sd.toFixed(2) + ' °/min', a < 0.3 ? 'ok' : (a < 2 ? 'warn' : 'bad')));
+  }
+  if (Math.abs(stillDriftDeg) > 1.0 && now - lastDriftWarn > 30000) {
+    lastDriftWarn = now;
+    flash('静止漂移已累积 ' + Math.abs(stillDriftDeg).toFixed(2) + '° —— 点「漂移归零」');
+  }
+
+  /* 频率显示【平均值】而不是瞬时值。
+     瞬时值在你静止（比如正要点按钮）时必然掉到 0 —— Android 会低功耗门控，
+     那个 0 会被误读成「传感器没工作」，而实际上事件一直在来。 */
+  const hzNow = currentHz();
+  if (hzNow > peakHz) peakHz = hzNow;
+  const avgHz = t0 ? orientN / ((now - t0) / 1000) : 0;
+  setRow('t-hz', avgHz.toFixed(1) + ' Hz 均');
+  setRow('t-fps', fps ? fps.toFixed(0) : '—');
+
+  /* AR 视野裁剪读数：「可见标注 / 总数 · 视野覆盖率 · 被遮挡数」。
+     这三个数字直接回答「相机此刻照到沙盘的哪一块、看到几个标点、
+     其中几个是被山挡住的」—— 后两者分开报，出问题时才能一眼分清
+     是「裁剪判错了」还是「遮挡判错了」。 */
+  setHtml('t-ar',
+    badge(arVisibleN + '/' + anchors.length, arVisibleN ? 'ok' : 'idle') +
+    ' <span style="opacity:.72">' + (arCoverage * 100).toFixed(0) + '%</span>' +
+    (arOcclusion && arCull && arOccludedN
+      ? ' ' + badge('遮 ' + arOccludedN, 'warn') : ''));
+
+  /* 云台读数：转角 + 光心到交点的距离。
+     |off| 是最要紧的一个数 —— 它直接决定「转动时相机会平移多少」，
+     0 就是纯旋转（位置恒定），非 0 就会让 AR 标注偏移。 */
+  if (!GIMBAL.on) {
+    setHtml('t-gimbal', badge('关', 'idle'));
+  } else {
+    const offMm = GIMBAL.off.length() * 1000;
+    setHtml('t-gimbal',
+      badge(GIMBAL.drive === 'manual' ? '角度' : '陀螺', 'ok') +
+      ' <span style="opacity:.72">' +
+      GIMBAL.yawDeg.toFixed(0) + '°/' + GIMBAL.pitchDeg.toFixed(0) + '° · ' +
+      (offMm < 0.5 ? '光心=交点' : 'off ' + offMm.toFixed(0) + 'mm') +
+      '</span>');
+  }
+}
+
+/* ---------- 控件 ---------- */
+function bindSlider(id, vid, key, fmt, after) {
+  const el = $(id);
+  el.addEventListener('input', () => {
+    P[key] = Number(el.value);
+    $(vid).textContent = fmt(P[key]);
+    R[key] = P[key];
+    if (after) after();
+  });
+  $(vid).textContent = fmt(P[key]);
+  R[key] = P[key];
+}
+
+bindSlider('s-table', 'v-table', 'tableW', v => v.toFixed(2) + ' m', () => rebuildTerrain());
+bindSlider('s-height', 'v-height', 'camHeight', v => v.toFixed(2) + ' m', () => { syncGimbalPivot(); updateCamPos(); });
+bindSlider('s-dist', 'v-dist', 'camDist', v => v.toFixed(2) + ' m', () => { syncGimbalPivot(); updateCamPos(); });
+bindSlider('s-relief', 'v-relief', 'reliefScale', v => v.toFixed(2) + '×', () => rebuildTerrain());
+bindSlider('s-fov', 'v-fov', 'hFov', v => v + '°', () => applyFov());
+bindSlider('s-pitch', 'v-pitch', 'framePitch', v => v + '°');   // 只在「自动取景」时使用
+bindSlider('s-smooth', 'v-smooth', 'smoothMs', v => v + ' ms'); // 0 = 直通，不额外做 after
+
+/* ---------- 云台控件 ----------
+   这几个不是 P 的字段（属于 GIMBAL），所以不复用 bindSlider。 */
+function bindGimbalSlider(id, vid, apply, fmt) {
+  const el = $(id);
+  const run = () => { apply(Number(el.value)); $(vid).textContent = fmt(Number(el.value)); };
+  el.addEventListener('input', run);
+  run();
+}
+bindGimbalSlider('s-gyaw', 'v-gyaw', v => { GIMBAL.yawDeg = v; }, v => v + '°');
+bindGimbalSlider('s-gpitch', 'v-gpitch', v => { GIMBAL.pitchDeg = v; }, v => v + '°');
+bindGimbalSlider('s-gox', 'v-gox', v => { GIMBAL.off.x = v / 100; syncGimbalPivot(); }, v => v + ' cm');
+bindGimbalSlider('s-goy', 'v-goy', v => { GIMBAL.off.y = v / 100; syncGimbalPivot(); }, v => v + ' cm');
+bindGimbalSlider('s-goz', 'v-goz', v => { GIMBAL.off.z = v / 100; syncGimbalPivot(); }, v => v + ' cm');
+
+/* 云台角度滑块要能反映程序写入的值（「台子对准中心」会改它们） */
+function setGimbalSliders() {
+  const y = Math.round(GIMBAL.yawDeg), p = Math.round(GIMBAL.pitchDeg);
+  $('s-gyaw').value = y;   $('v-gyaw').textContent = y + '°';
+  $('s-gpitch').value = p; $('v-gpitch').textContent = p + '°';
+}
+
+function setGimbalOn(on) {
+  GIMBAL.on = !!on;
+  if (GIMBAL.on) {
+    syncGimbalPivot();
+    buildGimbalHelper();
+    gimbalHelper.visible = true;
+    /* 切到 gyro 驱动时，用当前姿态当基准（相当于「现在这个姿态就是零位」） */
+    if (GIMBAL.drive === 'gyro') captureGyroPosRef();
+  } else if (gimbalHelper) {
+    gimbalHelper.visible = false;
+    gyroPosRef = null;
+  }
+  $('p-gimbal').textContent = '云台模式：' + (GIMBAL.on ? '开' : '关');
+  updateCamPos();
+}
+function setGimbalDrive(d) {
+  GIMBAL.drive = d;
+  $('p-gdrive').textContent = '位置：' + (d === 'manual' ? '角度驱动' : '陀螺仪增量');
+  if (GIMBAL.on && d === 'gyro') captureGyroPosRef();
+  updateCamPos();
+}
+
+$('p-gimbal').addEventListener('click', () => setGimbalOn(!GIMBAL.on));
+$('p-gdrive').addEventListener('click', () => setGimbalDrive(GIMBAL.drive === 'manual' ? 'gyro' : 'manual'));
+
+/* ---------- 起伏比例对齐（实物是起伏模型时用）----------
+   现场只要量一个数：实物沙盘上最高点高出基准面多少毫米。
+   基准面 = 模型的最低平坦面（对应高程 0）。 */
+$('p-peak').addEventListener('click', () => {
+  const mm = Number($('i-peak').value);
+  if (!(mm > 0)) { flash('请填实物最高点的实测高度（mm）'); return; }
+  const r = setReliefFromPeak(mm);
+  if (!r) { flash('地形还没加载'); return; }
+  const st = terrainStats();
+  flash('起伏已对齐：reliefScale = ' + r.reliefScale.toFixed(3) +
+        '，垂直夸张 ' + st.exaggeration.toFixed(1) + '×' +
+        (r.sliderClamped ? '（超出滑块 0.4–3.0，滑块显示已截断）' : ''));
+});
+$('p-reliefinfo').addEventListener('click', () => {
+  const st = terrainStats();
+  if (!st) { flash('地形还没加载'); return; }
+  flash('水平 1:' + Math.round(st.horizontalScale).toLocaleString() +
+        ' · 垂直 1:' + Math.round(st.verticalScale).toLocaleString() +
+        ' · 夸张 ' + st.exaggeration.toFixed(1) + '×' +
+        ' · 虚拟峰高 ' + st.peakMm.toFixed(0) + ' mm（直径的 ' + st.peakPctOfDiameter.toFixed(1) + '%）');
+});
+$('p-gcenter').addEventListener('click', () => {
+  /* 让台子当前姿态正好看向沙盘中心 —— 先把相机放到零位算角度，再套用。
+     （光心偏交点时，角度解与姿态有关，所以必须用零位位置去解。） */
+  const zero = new THREE.Vector3(0, P.camHeight, P.camDist);
+  const a = gimbalAnglesToCenter(zero);
+  GIMBAL.yawDeg = a.yawDeg;
+  GIMBAL.pitchDeg = a.pitchDeg;
+  setGimbalSliders();
+  flash('台子已对准中心：水平 ' + a.yawDeg.toFixed(1) + '° / 上下 ' + a.pitchDeg.toFixed(1) + '°');
+});
+
+function rebuildTerrain() {
+  if (!terrain || !terrainGeo) return;
+  const colorMap = terrain.material.map;
+
+  reliefM = BASE_RELIEF_PER_4_8M * (P.tableW / 4.8) * P.reliefScale;
+  baseLift = BASE_LIFT_PER_4_8M * (P.tableW / 4.8);
+  tableD = P.tableW * TERRAIN_ASPECT;
+
+  world.remove(terrain);
+  terrain.geometry.dispose();
+  for (const m of markers) world.remove(m);
+  markers = [];
+  if (labelsGroup) { world.remove(labelsGroup); labelsGroup = null; }
+  labels = [];
+  if (highlightRing) { world.remove(highlightRing); highlightRing = null; }
+
+  buildTerrain(colorMap);
+  buildSites();
+  updateCamPos();
+  if (selectedSite) highlight(selectedSite);
+  flash('已按 ' + P.tableW.toFixed(2) + ' m 重建地形');
+}
+
+$('b-align').addEventListener('click', () => alignNow(false));
+$('b-frame').addEventListener('click', () => {
+  const f = autoFrame();
+  if (!f) { flash('解不出取景参数 —— 试试调小「沙盘宽度」或调大「水平视场角」'); return; }
+  P.camDist = f.camDist; P.camHeight = f.camHeight;
+  R.camDist = P.camDist; R.camHeight = P.camHeight;
+  $('s-dist').value = f.camDist; $('v-dist').textContent = f.camDist.toFixed(2) + ' m';
+  $('s-height').value = f.camHeight; $('v-height').textContent = f.camHeight.toFixed(2) + ' m';
+  updateCamPos();
+  const info = framingInfo();
+  flash('自动取景：高 ' + f.camHeight.toFixed(2) + ' m · 距 ' + f.camDist.toFixed(2) + ' m（四角入画）');
+  R.framing = info;
+});
+$('b-zero').addEventListener('click', () => zeroDrift());
+$('b-terrain').addEventListener('click', () => {
+  if (!terrain) return;
+  terrainOn = !terrainOn;
+  terrain.visible = terrainOn;
+  tableEdge.visible = terrainOn;
+  circleOuter.visible = terrainOn;
+  circleInner.visible = terrainOn;
+  /* markers / labels / 视野高亮 的可见性由 updateArVisibility() 每帧重算
+     （主开关 && 视野内）。这里只翻主开关 —— 直接写 .visible 会被下一帧覆盖。 */
+  $('b-terrain').textContent = terrainOn ? '隐藏地形' : '显示地形';
+});
+$('b-labels').addEventListener('click', () => {
+  labelsOn = !labelsOn;
+  $('b-labels').textContent = labelsOn ? '隐藏标签' : '显示标签';
+});
+$('b-cull').addEventListener('click', () => {
+  arCull = !arCull;
+  $('b-cull').textContent = '视野裁剪：' + (arCull ? '开' : '关');
+  flash(arCull
+    ? '已开启视野裁剪：只显示画面内的 AR 标注'
+    : '已关闭视野裁剪：全部标注一次性渲染（对比用）');
+});
+$('b-look').addEventListener('click', () => {
+  const on = setManualLook(!manualLook);
+  flash(on
+    ? '拖动转视角：开（在画面上拖动 = 转动平板；R 回正）'
+    : '拖动转视角：关（视角交还给陀螺仪）');
+});
+$('b-panel').addEventListener('click', () => $('panel').classList.toggle('on'));
+$('p-close').addEventListener('click', () => $('panel').classList.remove('on'));
+$('p-fusion').addEventListener('click', () => {
+  motionFusion = !motionFusion;
+  $('p-fusion').textContent = '运动融合：' + (motionFusion ? '开' : '关');
+  flash(motionFusion
+    ? '已开启 devicemotion 高频融合（转动更跟手）'
+    : '已关闭融合，只用 deviceorientation（可对比卡顿）');
+});
+$('p-occl').addEventListener('click', () => {
+  arOcclusion = !arOcclusion;
+  $('p-occl').textContent = '遮挡剔除：' + (arOcclusion ? '开' : '关');
+  flash(arOcclusion
+    ? '已开启遮挡剔除：锚点躲在山背后时标签一并隐藏'
+    : '已关闭遮挡剔除：标签永远画在最上层（可对比）');
+});
+
+/* 全屏 + 尝试锁定横屏（都必须在本点击处理里同步发起） */
+$('b-full').addEventListener('click', async () => {
+  try {
+    if (!document.fullscreenElement) {
+      await document.documentElement.requestFullscreen();
+      if (screen.orientation && screen.orientation.lock) {
+        try { await screen.orientation.lock('landscape'); } catch (e) { /* 桌面浏览器会拒绝，忽略 */ }
+      }
+      $('b-full').textContent = '退出全屏';
+    } else {
+      if (screen.orientation && screen.orientation.unlock) { try { screen.orientation.unlock(); } catch (e) {} }
+      await document.exitFullscreen();
+      $('b-full').textContent = '全屏';
+    }
+  } catch (e) { flash('全屏失败：' + e.name); }
+});
+
+/* ---------- 报告 ---------- */
+$('b-report').addEventListener('click', () => {
+  const secs = t0 ? (performance.now() - t0) / 1000 : 0;
+  R.durationSec = Number(secs.toFixed(1));
+  R.orientEvents = orientN;
+  /* 两个频率都给：平均值可信，瞬时值反映「此刻手是否在动」 */
+  R.orientHzAvg = Number((orientN / Math.max(1, secs)).toFixed(2));
+  R.orientHzNow = Number(currentHz().toFixed(2));
+  R.avgFps = fps ? Number(fps.toFixed(1)) : null;
+  R.totalFrames = totalFrames;
+  R.aligned = aligned;
+  R.alignCount = alignCount;
+  R.landscape = isLandscape();
+  R.fullscreen = !!document.fullscreenElement;
+  R.screenAngleDeg = screenAngleDeg();
+  R.screen = { w: screen.width, h: screen.height, dpr: devicePixelRatio };
+  R.viewport = {
+    w: innerWidth, h: innerHeight,
+    aspect: Number((innerWidth / innerHeight).toFixed(4)),
+    /* 没全屏时浏览器 UI 会吃掉几十到一百多 px 高度，宽高比被拉宽，
+       同样的水平视场下垂直视场变小、地形显得更扁。这个差值值得记录。 */
+    lossVsScreenH: screen.height - innerHeight,
+  };
+  R.terrain = {
+    width: meta.width, height: meta.height, maxElevM: MAX_ELEV,
+    tableW: P.tableW, tableD: Number(tableD.toFixed(3)), reliefM: Number(reliefM.toFixed(4)),
+  };
+  R.framing = framingInfo();
+  const yaw = yawFromAlign();
+  if (yaw !== null) R.yawFromAlignDeg = Number(yaw.toFixed(3));
+  R.staticSampleSec = Number((stillMs / 1000).toFixed(1));
+  R.movingSampleSec = Number((movingMs / 1000).toFixed(1));
+  /* 采样覆盖率：有效样本时长 / 总时长。
+     低功耗门控下这个数会很低（实测 124 秒里只有 7.5 秒有效样本 = 6%）。
+     覆盖率低的时候，「静止漂移 0.00」只能说明「没测到」，不能说明「没有漂移」。 */
+  const cov = sampleCoverage();
+  R.effectiveSampleSec = cov.effectiveSec;
+  R.droppedSamples = cov.droppedN;
+  R.sampleCoverage = cov.coverage;
+  R.orientHzPeak = Number(peakHz.toFixed(2));
+  R.smoothMs = P.smoothMs;
+  /* devicemotion 高频通道 —— 与 deviceorientation 对比，用来判断该走哪条路 */
+  R.motion = {
+    haveMotion, events: motionN,
+    hz: Number(motionHz.toFixed(2)),
+    fusion: motionFusion,
+    gain: motionGain,
+  };
+  /* 姿态诊断：对齐时刻 vs 现在的原始角度。
+     「进去后姿态突然变了」这类问题，靠这两组数据 + screenAngle 才能定位。 */
+  R.pose = {
+    now: {
+      alpha: lastA, beta: lastB, gamma: lastG,
+      screenAngle: screenAngleDeg(),
+      screenType: (screen.orientation && screen.orientation.type) || '',
+    },
+    align: firstAlign ? {
+      alpha: firstAlign.alpha, beta: firstAlign.beta, gamma: firstAlign.gamma,
+      screenAngle: firstAlign.screenAngle,
+    } : null,
+  };
+  R.cameraTrack = R.cameraSettings || null;
+  R.route = 'gyro-3dof-no-arcore';
+  R.kiosk = kioskInfo();
+  /* 现场判据：支架仰角 + α 是否绝对。这两条决定「要不要调整支架」「要不要定期归零」 */
+  R.standTilt = standTiltVerdict();
+  R.alphaAbsolute = alphaAbsoluteVerdict();
+
+  const wrap = $('start-wrap');
+  document.body.classList.remove('ar-active');
+  wrap.style.display = 'flex';
+  wrap.innerHTML =
+    '<h1>Demo 报告</h1>' +
+    '<div class="card">' +
+      row('路线', badge('陀螺仪 3DoF（无 ARCore）', 'ok')) +
+      row('屏幕方向', R.landscape ? badge('横屏 ' + R.screenAngleDeg + '°', 'ok')
+                                  : badge('竖屏 ' + R.screenAngleDeg + '°', 'warn')) +
+      row('视口 / 宽高比', R.viewport.w + '×' + R.viewport.h + ' (' + R.viewport.aspect + ')' +
+        (R.fullscreen ? ' ' + badge('全屏', 'ok')
+                      : ' ' + badge('未全屏 · 少 ' + R.viewport.lossVsScreenH + 'px 高', 'warn'))) +
+      row('水平 / 垂直视场角', R.hFovDeg + '° / ' + (R.vFovDeg ?? '—') + '°') +
+      row('相机', R.cameraTestOk ? badge('出图正常', 'ok') : badge('未测试 / 失败', 'warn')) +
+      row('陀螺仪', haveOrient
+        ? badge(orientN + ' 个事件 · 均 ' + R.orientHzAvg + ' Hz', 'ok') +
+          ' <span style="color:var(--dim);font-size:11.5px">峰值 ' + R.orientHzPeak +
+          ' Hz（deviceorientation，静止时被低功耗门控到 ~1 Hz）</span>'
+        : badge('无数据', 'bad')) +
+      row('运动传感器', R.motion.haveMotion
+        ? badge(R.motion.events + ' 个事件 · ' + R.motion.hz + ' Hz', 'ok') +
+          ' <span style="color:var(--dim);font-size:11.5px">devicemotion 高频通道 · 融合 ' +
+          (R.motion.fusion ? '开' : '关') + '（' + R.motion.hz + ' Hz vs ' +
+          R.orientHzAvg + ' Hz）</span>'
+        : badge('无数据（只影响流畅度，不影响功能）', 'idle')) +
+      row('对齐次数', String(alignCount)) +
+      row('采样覆盖',
+        badge((R.sampleCoverage * 100).toFixed(0) + '%',
+              R.sampleCoverage > 0.5 ? 'ok' : (R.sampleCoverage > 0.15 ? 'warn' : 'bad')) +
+        ' <span style="color:var(--dim);font-size:11.5px">有效 ' + R.effectiveSampleSec +
+        ' s / ' + R.durationSec + ' s · 丢弃 ' + R.droppedSamples + ' 个（间隔 > 5 s）</span>') +
+      row('静止漂移率', R.staticDriftPerMin === null
+        ? badge('采样中（需 ≥4 s 静止，现有 ' + R.staticSampleSec + ' s）', 'idle')
+        : badge(R.staticDriftPerMin.toFixed(2) + ' °/min',
+                Math.abs(R.staticDriftPerMin) < 0.3 ? 'ok'
+                  : (Math.abs(R.staticDriftPerMin) < 2 ? 'warn' : 'bad')) +
+          ' <span style="color:var(--dim);font-size:11.5px">静止样本 ' +
+          R.staticSampleSec + ' s' +
+          (R.sampleCoverage < 0.15 ? ' · ⚠ 覆盖率低，可信度有限' : '') + '</span>') +
+      row('相对对齐偏转', R.yawFromAlignDeg === undefined ? '—'
+        : badge(R.yawFromAlignDeg.toFixed(2) + '°', 'idle') +
+          ' <span style="color:var(--dim);font-size:11.5px">转动+漂移的混合，不是漂移</span>') +
+      row('时长 / 帧率', R.durationSec + ' s / ' + (R.avgFps ?? '—') + ' fps') +
+      /* 支架仰角 —— 现场最需要的一条：画面在任意仰角都对，但 β→90° 时
+         HUD 的 α 派生读数会乱跳，容易被误判成设备坏了。 */
+      row('支架仰角', (R.standTilt.verdict === 'no-data'
+        ? badge('无数据', 'warn')
+        : badge(R.standTilt.label,
+                R.standTilt.verdict === 'ok' ? 'ok' : R.standTilt.verdict === 'warn' ? 'warn' : 'bad')) +
+        '<br><span style="color:var(--dim);font-size:11.5px">' + R.standTilt.hint + '</span>') +
+      /* α 参考系 —— 用 |offset| 的大小作【证据】（不是证明），
+         决定「要不要定期点漂移归零」。详见 alphaAbsoluteVerdict 上的长注释。 */
+      row('α 参考系', badge(R.alphaAbsolute.label,
+          R.alphaAbsolute.verdict === 'same-reference' ? 'ok'
+          : R.alphaAbsolute.verdict === 'different-reference' ? 'bad' : 'warn') +
+        (R.alphaAbsolute.meanOffsetDeg !== undefined
+          ? ' <span style="color:var(--dim);font-size:11.5px">offset 均值 ' + R.alphaAbsolute.meanOffsetDeg +
+            '° · 最大偏离 ' + R.alphaAbsolute.offsetMaxAbsDeg +
+            '° · 跨度 ' + R.alphaAbsolute.offsetSpreadDeg +
+            '° · 累计转向 ' + R.alphaAbsolute.yawTravelledDeg + '°</span>'
+          : '') +
+        '<br><span style="color:var(--dim);font-size:11.5px">' + R.alphaAbsolute.hint + '</span>') +
+      /* 展项健壮性三项 —— 无人值守展项必看。
+         「屏幕常亮」直接决定展项能不能无人值守；后两项是偶发问题的取证。 */
+      row('屏幕常亮', !R.kiosk.wakeLockSupported
+        ? badge('不支持（需在系统设置里关掉自动息屏）', 'warn')
+        : R.kiosk.wakeLockHeld
+          ? badge('已持有', 'ok') + ' <span style="color:var(--dim);font-size:11.5px">申请 ' +
+            R.kiosk.wakeLockRequests + ' 次 · 被释放 ' + R.kiosk.wakeLockReleases + ' 次</span>'
+          : badge('未持有' + (R.kiosk.wakeLockError ? '：' + R.kiosk.wakeLockError : ''), 'warn')) +
+      row('显卡上下文', (R.kiosk.ctxLostN === 0
+        ? badge('未丢失过', 'ok')
+        : badge('丢失 ' + R.kiosk.ctxLostN + ' 次 / 已恢复 ' + R.kiosk.ctxRestoredN + ' 次',
+                R.kiosk.ctxLostN === R.kiosk.ctxRestoredN ? 'idle' : 'bad'))) +
+      row('未捕获错误', R.kiosk.errors.length === 0
+        ? badge('无', 'ok')
+        : badge(R.kiosk.errors.length + ' 条', 'bad') +
+          '<pre style="margin:6px 0 0;font-size:11px;color:var(--dim);white-space:pre-wrap">' +
+          R.kiosk.errors.map(e => '[' + e.kind + '] ' + e.msg + (e.where ? ' @ ' + e.where : '')).join('\n') +
+          '</pre>') +
+      row('地形网格', meta.width + '×' + meta.height + ' · 上限 ' + MAX_ELEV + ' m') +
+      row('沙盘尺寸 / 起伏', P.tableW.toFixed(2) + ' m / ' + reliefM.toFixed(3) + ' m') +
+      row('取景', R.framing.ok
+        ? badge('四角入画', 'ok')
+        : badge(R.framing.degenerate
+            ? '相机在沙盘范围内'
+            : R.framing.axis + '超出 ' + R.framing.worst.toFixed(2) + '×',
+          R.framing.degenerate ? 'bad' : 'warn') +
+          ' <span style="color:var(--dim);font-size:11.5px">水平 ' + R.framing.hFrac +
+          ' / 垂直 ' + R.framing.vFrac + '（>1 即出画）</span>') +
+      row('相机位', '高 ' + P.camHeight.toFixed(2) + ' 距 ' + P.camDist.toFixed(2) + ' m') +
+      row('AR 标注（本帧）',
+        badge(arVisibleN + '/' + anchors.length, arVisibleN ? 'ok' : 'idle') +
+        ' <span style="color:var(--dim);font-size:11.5px">视野覆盖 ' +
+        (arCoverage * 100).toFixed(1) + '% · 因遮挡隐藏 ' + arOccludedN +
+        ' · 裁剪 ' + (arCull ? '开' : '关') + ' · 遮挡剔除 ' + (arOcclusion ? '开' : '关') + '</span>') +
+      row('选中地点', R.selectedSiteName || '—') +
+      row('选点来源', R.lastPickSource === 'label' ? badge('标签命中', 'ok')
+        : R.lastPickSource === 'terrain' ? badge('地形命中', 'idle')
+        : R.lastPickSource === 'terrain-miss' ? badge('附近无收录地点', 'warn')
+        : badge('未点选', 'idle')) +
+    '</div>' +
+    '<div class="card"><div style="font-weight:600;margin-bottom:6px">这条路线能做到什么</div>' +
+      '<div style="font-size:13px;line-height:1.7">' +
+      '<b style="color:var(--ok)">能做到</b>：真实相机透视 100% 出图；真实湖南 DEM 地形与地名标签；' +
+      '旋转视角时地形稳定锁在世界里；点击选取地点。<br>' +
+      '<b style="color:var(--bad)">做不到</b>：平移跟踪。平板一旦移动位置，地形会跟着滑动 —— ' +
+      '这是 3DoF 的固有限制，不是 bug。<br>' +
+      '<b>因此适用条件</b>：平板<b>装在固定支架上、只转不移</b>。' +
+      '若要支持自由移动，需要在沙盘边框贴 AprilTag / 已知标记做绝对定位。' +
+      '</div></div>' +
+    '<div class="btnrow">' +
+      '<button id="r-json">生成报告 JSON</button>' +
+      '<button class="ghost" id="r-copy">复制到剪贴板</button>' +
+      '<button class="ghost" id="r-back">返回 AR</button>' +
+    '</div>' +
+    '<pre id="r-out" style="max-width:660px;width:100%;text-align:left;background:var(--panel);' +
+      'border:1px solid var(--line);border-radius:10px;padding:12px;overflow:auto;' +
+      'font-size:11.5px;max-height:30vh;white-space:pre-wrap">点击「生成报告 JSON」…</pre>';
+
+  $('r-json').addEventListener('click', () => {
+    /* 把「本帧 AR 状态」也一起写进 JSON —— 报告是现场唯一能带走的东西，
+       少了这几个数就没法回头复盘「当时到底显示了几个人、几个被挡」。 */
+    R.arFrame = {
+      visible: arVisibleN, total: anchors.length, occluded: arOccludedN,
+      coverage: Number(arCoverage.toFixed(4)),
+      cull: arCull, occlusion: arOcclusion,
+      anchors: anchors.map(a => ({
+        id: a.site.id, name: a.site.name,
+        score: Number.isFinite(a.score) ? Number(a.score.toFixed(4)) : null,
+        visible: a.visible, occluded: !!a.occluded, labelRendered: a.label.visible,
+      })),
+    };
+    $('r-out').textContent = JSON.stringify(R, null, 2);
+  });
+  $('r-copy').addEventListener('click', async () => {
+    try { await navigator.clipboard.writeText($('r-out').textContent); $('r-copy').textContent = '已复制 ✓'; }
+    catch (e) { $('r-copy').textContent = '复制失败，请长按手动复制'; }
+    setTimeout(() => { $('r-copy').textContent = '复制到剪贴板'; }, 2000);
+  });
+  $('r-back').addEventListener('click', () => {
+    wrap.style.display = 'none';
+    document.body.classList.add('ar-active');
+  });
+});
+
+/* ================= 展项健壮性（无人值守才会暴露的三件事）=================
+
+   这三条在开发时都看不出来，只有在展项上连续开一整天才会现形。 */
+
+/* ---------- ① 屏幕常亮（Wake Lock）----------
+   展项要连续运行，而系统默认几十秒就息屏。息屏的后果不只是「看不到画面」：
+   浏览器会把传感器事件一起挂起，恢复时姿态有一个跳变（等于用户白对准了）。
+   `navigator.wakeLock.request('screen')` 就是为这个场景设计的。
+
+   ⚠️ 两个必须处理的细节，漏一个这个功能就等于没做：
+   1) **页面被切到后台时浏览器会【自动释放】锁**，切回来必须【重新申请】。
+      只申请一次的话，第一次息屏之后就再也不常亮了 —— 而且这种「第一次有效、
+      后面失效」的 bug 特别难被发现。
+   2) **必须处理 rejection**：低电量 / 省电模式下浏览器会拒绝（NotAllowedError），
+      这是【正常行为】，不能弹窗打扰用户，记进报告即可。 */
+let wakeLock = null;
+let wakeLockRequests = 0, wakeLockReleases = 0, wakeLockErr = '';
+async function acquireWakeLock() {
+  if (!('wakeLock' in navigator)) { wakeLockErr = 'unsupported'; return; }
+  if (document.visibilityState !== 'visible') return;
+  if (wakeLock && !wakeLock.released) return;      // 已经持有
+  try {
+    wakeLock = await navigator.wakeLock.request('screen');
+    wakeLockRequests++;
+    wakeLockErr = '';
+    /* 浏览器释放锁时（切后台 / 手动）会把引用置空，下次可见时重新申请 */
+    wakeLock.addEventListener('release', () => { wakeLockReleases++; wakeLock = null; });
+  } catch (e) {
+    /* 低电量、省电模式、非安全上下文都会走到这里 —— 属正常，不打扰用户 */
+    wakeLockErr = e.name + ': ' + (e.message || '');
+    wakeLock = null;
+  }
+}
+
+/* ---------- ② WebGL 上下文丢失 ----------
+   平板长时间运行、切换应用、GPU 驱动重置时，浏览器可能回收 WebGL 上下文。
+   默认行为是画面变空白且【不再恢复】—— 无人值守展项就废了。
+   好消息：Three.js 内部已经处理了（`onContextLost` 里 `preventDefault()` +
+   监听 `webglcontextrestored` 重建 GL 状态），所以不需要我们接管恢复。
+   我们只需要**把它记下来** —— 否则「偶尔黑一下」这个现象在现场无法取证。 */
+let ctxLostN = 0, ctxRestoredN = 0;
+const _canvas = renderer.domElement;
+_canvas.addEventListener('webglcontextlost', (e) => {
+  ctxLostN++;
+  /* 再 preventDefault 一次是幂等的安全网：确保「可恢复」语义，
+     不依赖 Three.js 内部实现是否变化。 */
+  e.preventDefault();
+  flash('⚠ 显卡上下文丢失，正在恢复…');
+}, false);
+_canvas.addEventListener('webglcontextrestored', () => {
+  ctxRestoredN++;
+  /* 恢复后必须重算尺寸与视场 —— GL 状态被重建过，之前设的 viewport 不一定还在 */
+  onResize();
+  flash('显卡上下文已恢复');
+}, false);
+
+/* ---------- ③ 未捕获错误留痕 ----------
+   展项现场没人看控制台。把错误记进报告里，现场人员点「生成报告」就能看到
+   「出过错、出的是什么、几次」。没有这一条，偶发错误永远查不出来。 */
+const errLog = [];
+function logErr(kind, msg, where) {
+  if (errLog.length < 20) errLog.push({ kind, msg: String(msg).slice(0, 300), where: where || '' });
+}
+addEventListener('error', (e) => {
+  /* ⚠️ 资源加载失败（img/script）也会触发 error 事件，但它是 Event 不是 ErrorEvent，
+     没有 message。不过滤的话，一张图加载失败会被记成「脚本错误」，误导排查。 */
+  if (e instanceof ErrorEvent && e.message) logErr('error', e.message, e.filename + ':' + e.lineno);
+}, false);
+addEventListener('unhandledrejection', (e) => {
+  const r = e.reason;
+  logErr('unhandledrejection', (r && (r.message || r.name)) || r, '');
+}, false);
+
+function kioskInfo() {
+  return {
+    wakeLockSupported: 'wakeLock' in navigator,
+    wakeLockHeld: !!(wakeLock && !wakeLock.released),
+    wakeLockRequests, wakeLockReleases, wakeLockError: wakeLockErr,
+    ctxLostN, ctxRestoredN,
+    errors: errLog,
+    visibility: document.visibilityState,
+  };
+}
+
+/* 页面重新可见时（切回前台 / 息屏唤醒）：
+   ① 重新申请常亮锁（见上）
+   ② 丢弃漂移采样的时间基准 —— 挂起期间没有事件，sPrevT 与现在差了几十秒，
+      不重置的话恢复后第一个样本会被 DT_MAX_SEC 丢掉（无害），但再下一个
+      样本的 dt 已经不可信了。显式重置更干净。 */
+addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') {
+    acquireWakeLock();
+    sPrevA = null; sPrevT = 0;
+  }
+}, false);
+
+/* ---------- 启动 ---------- */
+let t0 = 0;
+
+/* ---------- 启动流程 ----------
+   拆成三个可独立调用的步骤，是为了支持【无相机继续】：
+   桌面 / 预览环境里没有摄像头也没有陀螺仪，如果相机失败就直接 return，
+   就完全看不到 AR 叠加和裁剪效果了。现在相机失败只是「没有真实画面背景」，
+   地形、标注、裁剪、点击全部照常。 */
+
+/* iOS 13+ 必须在用户手势里申请传感器权限。
+   ⚠️ 必须在任何 await 之前调用 —— await 之后手势就算被消耗掉了，
+      requestPermission() 会被拒。 */
+async function requestOrientPermission() {
+  try {
+    if (typeof DeviceOrientationEvent !== 'undefined' &&
+        typeof DeviceOrientationEvent.requestPermission === 'function') {
+      const p = await DeviceOrientationEvent.requestPermission();
+      R.orientPermission = p;
+      return p === 'granted';
+    }
+  } catch (e) {
+    R.orientPermission = 'error: ' + e.name + ': ' + (e.message || '');
+  }
+  return true;
+}
+
+async function openCamera() {
+  try {
+    stopCam();
+    videoStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+      audio: false,
+    });
+    const v = $('cam');
+    v.srcObject = videoStream;
+    v.style.display = 'block';
+    await v.play();
+    const tr = videoStream.getVideoTracks()[0];
+    R.cameraTestOk = true;
+    R.cameraLabel = tr ? tr.label : '';
+    R.cameraSettings = tr ? tr.getSettings() : null;
+    return true;
+  } catch (e) {
+    R.cameraTestOk = false;
+    R.cameraTestError = e.name + ': ' + (e.message || '');
+    return false;
+  }
+}
+
+async function beginArSession() {
+  $('loading').classList.add('on');
+
+  /* 加载地形数据 */
+  try {
+    const texLoader = new THREE.TextureLoader();
+    const [m, buf, color] = await Promise.all([
+      fetch('./assets/terrain-meta.json').then(r => r.json()),
+      fetch('./assets/terrain-height.f32').then(r => r.arrayBuffer()),
+      texLoader.loadAsync('./assets/terrain-color.png'),
+    ]);
+    meta = m;
+    heightGrid = new Float32Array(buf);
+    if (heightGrid.length !== meta.width * meta.height) throw new Error('地形网格尺寸与数据不匹配');
+    dataMaxElev = 0;
+    for (let i = 0; i < heightGrid.length; i++) if (heightGrid[i] > dataMaxElev) dataMaxElev = heightGrid[i];
+    tableD = P.tableW * TERRAIN_ASPECT;
+    reliefM = BASE_RELIEF_PER_4_8M * (P.tableW / 4.8) * P.reliefScale;
+    baseLift = BASE_LIFT_PER_4_8M * (P.tableW / 4.8);
+    buildTerrain(color);
+    buildSites();
+    R.terrainLoaded = true;
+    /* 「实物峰高」输入框的默认值 = 当前虚拟峰高。
+       这样它天然是一个【可对照的参考数】：现场拿尺子量出的数填进去，
+       和默认值差多少，就说明起伏比例差多少。 */
+    const st0 = terrainStats();
+    if (st0) $('i-peak').value = Math.round(st0.peakMm);
+  } catch (e) {
+    R.terrainError = e.name + ': ' + (e.message || '');
+    $('loading').classList.remove('on');
+    $('precheck').innerHTML = row('加载地形', badge('失败', 'bad')) +
+      row('错误信息', e.message || '（无）');
+    $('start').disabled = false;
+    return;
+  }
+
+  $('loading').classList.remove('on');
+  renderer.domElement.style.display = 'block';
+  $('start-wrap').style.display = 'none';
+  $('topbar').classList.add('on');
+  $('bar').classList.add('on');
+  $('crosshair').classList.add('on');
+  document.body.classList.add('ar-active');
+  $('alignhint').innerHTML = '正在读取陀螺仪并锁定视角…<br>没锁准就点「重新对齐」';
+  $('alignhint').classList.add('on');
+
+  addEventListener('deviceorientation', onOrient);
+  addEventListener('devicemotion', onMotion);
+  /* 被动监听「保证绝对」的 deviceorientationabsolute —— 只用来判断
+     α 是不是绝对参考（决定展项要不要定期归零），不参与渲染。
+     有些平台不发这个事件，没关系，判定会给出「无绝对事件」并回退到看漂移率。 */
+  addEventListener('deviceorientationabsolute', onOrientAbs);
+  /* 申请屏幕常亮。放在这里（用户点击手势内）最稳 ——
+     部分浏览器要求 wakeLock 在用户激活状态下申请。 */
+  acquireWakeLock();
+  cam3.aspect = innerWidth / innerHeight;
+  applyFov();
+  syncGimbalPivot();      // 交点 = 标称位置 − off（off 默认 0，即交点在光心上）
+  updateCamPos();
+  cam3.lookAt(0, 0, 0);
+  cam3.updateMatrixWorld();
+  renderer.setAnimationLoop(render);
+  t0 = performance.now();
+  fpsT0 = performance.now();
+
+  setTimeout(() => {
+    if (!haveOrient) {
+      /* 兜底：按固定视角把模型显示出来，否则用户只会看到相机画面、
+         以为页面坏了。此时一旦陀螺仪恢复，仍会立刻对齐（会跳一下，
+         但那是故障恢复，不是正常流程）。
+
+         同时【自动打开「拖动转视角」】—— 没有陀螺仪时这是唯一能
+         把「转向哪边就只显示哪边」看出来的办法。 */
+      flash('⚠ 没有收到陀螺仪数据 —— 已开启「拖动转视角」');
+      fallbackShow = true;
+      cam3.lookAt(0, 0, 0);
+      cam3.updateMatrixWorld();
+      setManualLook(true);
+    }
+  }, 3000);
+}
+
+$('start').addEventListener('click', async () => {
+  $('start').disabled = true;
+  $('loading').classList.add('on');
+
+  if (!(await requestOrientPermission())) {
+    alert('传感器权限被拒绝（' + R.orientPermission + '）。请刷新页面重新授权。');
+    $('start').disabled = false; $('loading').classList.remove('on');
+    return;
+  }
+
+  const camOk = await openCamera();
+  if (!camOk) {
+    /* 不堵死：给「无相机继续」的出口。地形与 AR 标注照常渲染。 */
+    $('loading').classList.remove('on');
+    $('start').disabled = false;
+    $('precheck').innerHTML =
+      row('打开相机', badge('失败', 'bad')) +
+      row('错误信息', R.cameraTestError) +
+      row('说明', '可以「无相机继续」—— 地形、AR 标注、视野裁剪、点击全部照常，' +
+        '只是没有真实画面做背景。');
+    $('nocam').style.display = '';
+    return;
+  }
+
+  await beginArSession();
+});
+
+$('nocam').addEventListener('click', async () => {
+  $('nocam').style.display = 'none';
+  if (!(await requestOrientPermission())) {
+    alert('传感器权限被拒绝（' + R.orientPermission + '）。请刷新页面重新授权。');
+    $('nocam').style.display = '';
+    return;
+  }
+  R.cameraTestOk = false;
+  await beginArSession();
+});
+
+/* ---------- 尺寸 / 方向 ---------- */
+function onResize() {
+  cam3.aspect = innerWidth / innerHeight;
+  applyFov();
+  renderer.setSize(innerWidth, innerHeight);
+}
+
+/* ---------- 屏幕方向变化（系统自动旋转 / 用户手动转屏）----------
+   ⚠️ 这里【不能】去「锁住相机姿态」。
+
+   曾经这么写过：alignQuat = qNow⁻¹ · camQuat，号称「防模型莫名其妙转 90°」。
+   它是错的，而且恰好会在「平板横屏固定在支架上」这个场景里出错：
+
+   ① 相机必须【等于屏幕内容坐标系】—— 只有这样，渲染出来的画面画进内容坐标系
+      才是对的。屏幕方向一变，内容坐标系在房间里转了 −Δ，相机也必须跟着转 −Δ。
+      用户此时【看不到】任何变化：因为内容坐标系也转了，两者相抵。
+   ② 强行把相机锁住不动，相机就不再等于内容坐标系，画面会相对屏幕歪掉 Δ。
+      实测（tools/landscape-map-test.mjs）：设备完全不动、只把 o 从 0° 改成 90°，
+      相机被扭了 25.3° —— 而且是半途采样的中间值，正确值应该是「跟着转 90°、用户无感」。
+   ③ 设备【真的在平面内转了 φ】时，规范公式本身就给出「相机逐位不变」的结果
+      （见 landscape-map-test 的物理不变量一项），根本不需要这个补丁。
+
+   所以屏幕方向变化时只需要重算尺寸 / 视场角。 */
+function onOrientationChanged() {
+  setTimeout(onResize, 120);
+}
+
+addEventListener('resize', onResize);
+addEventListener('orientationchange', onOrientationChanged);
+if (screen.orientation && screen.orientation.addEventListener) {
+  screen.orientation.addEventListener('change', onOrientationChanged);
+}
+</script>
+</body>
+</html>

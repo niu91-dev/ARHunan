@@ -1,0 +1,639 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>真实 AR 接入完整方案 · 湖南地形沙盘</title>
+<style>
+  :root{
+    --bg:#0b1418; --panel:#101e24; --panel2:#0d1a1f; --line:#1d333c;
+    --ink:#dceef0; --dim:#8fadb5; --dim2:#6d8b93;
+    --accent:#4fd1c5; --accent2:#7ee0d2; --warn:#f0b357; --bad:#ef6b6b; --good:#6fd48a;
+    --mono:ui-monospace,"SFMono-Regular",Consolas,"Liberation Mono",monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:15px/1.75 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;}
+  .wrap{max-width:1000px;margin:0 auto;padding:48px 28px 80px}
+  header.top{border-bottom:1px solid var(--line);padding-bottom:26px;margin-bottom:34px}
+  .kicker{font:600 12px/1 var(--mono);letter-spacing:.22em;color:var(--accent);text-transform:uppercase}
+  h1{font-size:30px;line-height:1.3;margin:14px 0 8px;font-weight:700}
+  h1 em{font-style:normal;color:var(--accent2)}
+  .sub{color:var(--dim);font-size:14px;margin:0}
+  h2{font-size:20px;margin:48px 0 14px;padding-left:12px;border-left:3px solid var(--accent);font-weight:700}
+  h3{font-size:16px;margin:28px 0 10px;color:var(--accent2);font-weight:600}
+  h4{font-size:14.5px;margin:20px 0 8px;color:var(--ink);font-weight:600}
+  p{margin:10px 0}
+  ul,ol{margin:10px 0;padding-left:22px}
+  li{margin:6px 0}
+  code{font-family:var(--mono);font-size:12.5px;background:#0a161a;border:1px solid var(--line);
+    border-radius:5px;padding:1px 6px;color:#a8e6dc}
+  .grid{display:grid;gap:14px}
+  .g2{grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
+  .g3{grid-template-columns:repeat(auto-fit,minmax(200px,1fr))}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px 20px}
+  .card h3,.card h4{margin-top:0}
+  .stat{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:16px 18px}
+  .stat .v{font:700 24px/1.1 var(--mono);color:var(--accent2)}
+  .stat .l{font-size:12.5px;color:var(--dim);margin-top:6px}
+  table{width:100%;border-collapse:collapse;margin:14px 0;font-size:13.5px}
+  th,td{text-align:left;padding:9px 11px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--accent2);font-weight:600;background:#0d1a1f;font-size:12.5px;letter-spacing:.04em}
+  tr:hover td{background:#0e1c22}
+  .badge{display:inline-block;font:600 11.5px/1 var(--mono);padding:4px 9px;border-radius:999px;border:1px solid;white-space:nowrap}
+  .b-ok{color:var(--good);border-color:#2c5a3c;background:#12261b}
+  .b-warn{color:var(--warn);border-color:#5c4a22;background:#241d0f}
+  .b-bad{color:var(--bad);border-color:#5c2a2a;background:#261212}
+  .b-info{color:var(--accent);border-color:#26504d;background:#0f2422}
+  .b-rec{color:#0b1418;border-color:var(--accent);background:var(--accent)}
+  .callout{border-left:3px solid var(--accent);background:#0e2124;border-radius:0 10px 10px 0;padding:14px 18px;margin:18px 0}
+  .callout.warn{border-left-color:var(--warn);background:#231d10}
+  .callout.bad{border-left-color:var(--bad);background:#241313}
+  .callout.good{border-left-color:var(--good);background:#12241a}
+  .callout strong{color:var(--accent2)}
+  .callout.warn strong{color:var(--warn)}
+  .callout.bad strong{color:var(--bad)}
+  .callout.good strong{color:var(--good)}
+  pre{background:#081216;border:1px solid var(--line);border-radius:10px;padding:14px 16px;overflow-x:auto;
+    font:12.5px/1.7 var(--mono);color:#9fd8cf}
+  .flow{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:14px 0}
+  .node{background:#0f2229;border:1px solid var(--line);border-radius:8px;padding:8px 12px;font-size:13px}
+  .node.hi{border-color:#2f6d66;background:#0f2a2b;color:var(--accent2)}
+  .arrow{color:var(--dim2);font-family:var(--mono)}
+  .muted{color:var(--dim)}
+  footer{margin-top:56px;padding-top:20px;border-top:1px solid var(--line);color:var(--dim2);font-size:12.5px}
+  .toc{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:16px 22px;margin:24px 0}
+  .toc ol{margin:8px 0;columns:2;column-gap:32px}
+  .toc a{color:var(--dim);text-decoration:none}
+  .toc a:hover{color:var(--accent)}
+  .phase{display:flex;gap:14px;margin:14px 0;align-items:flex-start}
+  .phase .n{flex:0 0 46px;height:46px;border-radius:10px;background:#0f2a2b;border:1px solid #2f6d66;
+    color:var(--accent2);font:700 17px/46px var(--mono);text-align:center}
+  .phase .b{flex:1}
+  .phase .b h4{margin:2px 0 6px}
+  .phase .b p{margin:4px 0;font-size:14px}
+  .deliver{font-size:12.5px;color:var(--dim);font-family:var(--mono)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="top">
+  <div class="kicker">AR Integration Plan / 2026-09-29</div>
+  <h1>湖南地形沙盘<br>真实 AR 接入<em>完整方案</em></h1>
+  <p class="sub">从"浏览器视觉模拟"到"Pad 摄像头对准实体沙盘、全息内容精确贴合"的可执行路线</p>
+</header>
+
+<div class="callout good">
+  <strong>一句话结论：</strong>不要把这件事当成"通用 AR"来做。你的场景是<b>已知刚体 + 固定展位 + 单目摄像头</b>——这比通用 SLAM 简单一个数量级。推荐路线：<b>沙盘边框布置 AprilTag 标记 → 单目解算相机六自由度位姿 → 驱动现有 Three.js 相机</b>，配合 <b>IMU 融合滤波</b> 与 <b>已知 DEM 深度遮挡</b>。这条路能在现有 Web 代码上增量实现，iOS/Android 浏览器都能跑，不必推倒重来。
+</div>
+
+<div class="toc">
+  <strong style="color:var(--accent2);font-size:14px">目录</strong>
+  <ol>
+    <li><a href="#s1">问题重新定义</a></li>
+    <li><a href="#s2">三条技术路线对比</a></li>
+    <li><a href="#s3">推荐架构总览</a></li>
+    <li><a href="#s4">坐标系与标定（核心）</a></li>
+    <li><a href="#s5">每帧处理管线</a></li>
+    <li><a href="#s6">稳定性：滤波与丢失恢复</a></li>
+    <li><a href="#s7">遮挡：用已知 DEM 做深度遮挡</a></li>
+    <li><a href="#s8">交互重设计</a></li>
+    <li><a href="#s9">物理沙盘与现场要求</a></li>
+    <li><a href="#s10">分阶段实施计划</a></li>
+    <li><a href="#s11">验收标准与测试用例</a></li>
+    <li><a href="#s12">风险与降级路径</a></li>
+    <li><a href="#s13">与现有代码的映射</a></li>
+  </ol>
+</div>
+
+<h2 id="s1">一、问题重新定义：这不是通用 AR</h2>
+
+<p>通用 AR（ARKit/ARCore 的 world tracking）要解决的是"在一个未知空间里边走边建图并保持内容不漂"。而你的场景有三个强约束，把难度大幅拉低：</p>
+
+<div class="grid g3">
+  <div class="stat"><div class="v">刚体</div><div class="l">沙盘静止、刚性、尺寸已知，不是"未知环境"</div></div>
+  <div class="stat"><div class="v">已知几何</div><div class="l">DEM 就在手上，虚拟地形与实体沙盘一一对应</div></div>
+  <div class="stat"><div class="v">固定展位</div><div class="l">观察范围有限（Pad 在台面边缘 4–9 m），不需要大范围建图</div></div>
+</div>
+
+<p>所以真正要解的只有一个问题：<b>每一帧，求相机相对沙盘坐标系的六自由度位姿 T<sub>WC</sub></b>。求出来之后，其余全部复用现有渲染代码。</p>
+
+<div class="callout warn">
+  <strong>但有一个必须先解决的物理前提：几何一致性。</strong>
+  现有虚拟沙盘是 <b>4.8 × 5.5 m 台面、最大起伏 29 cm</b>，对应真实 <b>549.5 × 628.0 km</b> 范围、2076 m 高差，即<b>垂直夸张 16.0 倍</b>（水平约 1:114,300，垂直约 1:7,159）。<br>
+  实体沙盘必须<b>按同一比例制作</b>，否则虚拟内容与实体永远对不上。若实体已经做好了别的比例，就必须反向修改 <code>app.js</code> 里的 <code>0.29 / 2076</code> 映射常量去适配实体——<b>这一步必须在开工前定死。</b>
+</div>
+
+<h2 id="s2">二、三条技术路线对比</h2>
+
+<table>
+  <tr>
+    <th>路线</th><th>定位原理</th><th>平台</th><th>精度</th><th>遮挡</th><th>开发量</th><th>结论</th>
+  </tr>
+  <tr>
+    <td><b>A. 视觉标记配准</b><br><span class="muted">AprilTag / ArUco</span></td>
+    <td>沙盘边框贴已知位姿的标记，单目解算 PnP</td>
+    <td>iOS + Android 浏览器<br><span class="muted">（只需 getUserMedia）</span></td>
+    <td><span class="badge b-ok">高</span><br>标记可见时 5–15 mm</td>
+    <td>自建<br><span class="muted">用已知 DEM 做深度</span></td>
+    <td><span class="badge b-info">中</span><br>复用现有代码</td>
+    <td><span class="badge b-rec">推荐起步</span></td>
+  </tr>
+  <tr>
+    <td><b>B. 设备原生跟踪</b><br><span class="muted">ARKit / ARCore / WebXR</span></td>
+    <td>VIO 视觉惯性里程计 + 锚点重定位</td>
+    <td>原生双平台<br><span class="muted">WebXR 仅 Android</span></td>
+    <td><span class="badge b-ok">高</span><br>但需二次对齐</td>
+    <td><span class="badge b-ok">原生</span><br>LiDAR 真实遮挡</td>
+    <td><span class="badge b-warn">大</span><br>渲染层需重写</td>
+    <td><span class="badge b-info">正式展项首选</span></td>
+  </tr>
+  <tr>
+    <td><b>C. 机械编码器</b><br><span class="muted">支架关节装编码器</span></td>
+    <td>直接读取支架各轴角度/位移，无视觉</td>
+    <td>任意</td>
+    <td><span class="badge b-ok">最高</span><br>机械级</td>
+    <td>仍需 DEM 深度</td>
+    <td><span class="badge b-warn">中</span><br>需改机械</td>
+    <td><span class="badge b-warn">限定自由度</span></td>
+  </tr>
+  <tr>
+    <td><b>D. 外部光学跟踪</b><br><span class="muted">OptiTrack / Vive Tracker</span></td>
+    <td>红外相机阵列跟踪 Pad 上的反光球</td>
+    <td>PC / 头显</td>
+    <td><span class="badge b-ok">亚毫米</span></td>
+    <td>仍需 DEM 深度</td>
+    <td><span class="badge b-bad">大</span><br>需安装标定</td>
+    <td><span class="badge b-info">预算充足时</span></td>
+  </tr>
+</table>
+
+<h3>为什么推荐 A 起步</h3>
+<ul>
+  <li><b>不锁平台。</b>WebXR 的 immersive-ar 在 iOS Safari 上<b>完全不支持</b>；而标记跟踪只需要摄像头权限——现有 <code>camera-preview.js</code> 已经把 <code>getUserMedia</code> 跑通了。这一条就排除了路线 B 的 Web 版本。</li>
+  <li><b>精度可控且可解释。</b>标记的沙盘坐标是"量出来的"，误差来源清晰；VIO 的漂移是"猜出来的"，不可控。</li>
+  <li><b>改动是增量的。</b>渲染层、地点数据、卡片布局逻辑几乎不动，只替换"相机从哪来"。</li>
+  <li><b>能提前暴露真实问题。</b>垂直夸张、内参、延迟、遮挡这些坑，在 PoC 阶段就会撞到，不会等到现场。</li>
+</ul>
+
+<div class="callout">
+  <strong>决策点：</strong>如果 PoC 后配准精度达不到 ≤10 mm，或标记遮挡过于频繁，再迁移到路线 B（Unity + AR Foundation）——此时你已经积累的标定数据、标记位姿、验收用例全部可以复用，不是白做。
+</div>
+
+<h2 id="s3">三、推荐架构总览</h2>
+
+<div class="flow">
+  <span class="node">摄像头帧<br><span class="muted">getUserMedia</span></span><span class="arrow">→</span>
+  <span class="node hi">标记检测<br><span class="muted">AprilTag · WASM</span></span><span class="arrow">→</span>
+  <span class="node hi">PnP 解算<br><span class="muted">2D-3D → T<sub>WC</sub></span></span><span class="arrow">→</span>
+  <span class="node">滤波融合<br><span class="muted">One Euro + IMU</span></span><span class="arrow">→</span>
+  <span class="node">Three.js 相机</span><span class="arrow">→</span>
+  <span class="node">渲染 + DOM 卡片</span>
+</div>
+
+<p>关键设计原则：<b>跟踪与渲染彻底解耦</b>。跟踪器只吐出一个位姿对象（位置向量 + 四元数 + 时间戳 + 置信度），渲染层完全不关心它是从标记、IMU 还是编码器来的。这样将来换路线 B 时，只需要替换跟踪器实现。</p>
+
+<pre>// 跟踪器统一接口（新增 tracker.js）
+{
+  pose:      { position: Vector3, quaternion: Quaternion },  // 相机在沙盘坐标系中的位姿
+  timestamp: number,        // 采集时刻（不是解算时刻）
+  confidence: 0..1,         // 0 = 完全丢失
+  source: 'marker' | 'imu-extrapolated' | 'frozen'
+}</pre>
+
+<h2 id="s4">四、坐标系与标定（核心）</h2>
+
+<p>这一节是整个方案的成败所在。三个坐标系必须定义清楚：</p>
+
+<table>
+  <tr><th>坐标系</th><th>定义</th><th>来源</th></tr>
+  <tr>
+    <td><b>W — 沙盘系</b></td>
+    <td>原点在台面几何中心，<b>+X 向东、+Y 向上、+Z 向南</b>，单位米</td>
+    <td>与现有代码完全一致：<code>(uv.x-0.5)*4.8</code>、<code>(0.5-uv.y)*5.5</code>。<b>不需要改</b></td>
+  </tr>
+  <tr>
+    <td><b>C — 相机系</b></td>
+    <td>OpenCV 约定：+X 右、+Y 下、+Z 向前（与 Three.js 的 +Z 向后差一个翻转）</td>
+    <td>解算结果</td>
+  </tr>
+  <tr>
+    <td><b>M<sub>i</sub> — 标记系</b></td>
+    <td>第 i 个标记的局部坐标系，其原点/朝向在 W 中的位姿 <b>预先测定并固化</b></td>
+    <td><code>markers.json</code></td>
+  </tr>
+</table>
+
+<h3>4.1 相机内参标定（必须先做，且与分辨率绑定）</h3>
+
+<p>现有代码用 <code>BASE_VERTICAL_FOV = 48</code> 和 <code>zoom</code> 模拟镜头——这是<b>假的内参</b>。真实 AR 必须用实际内参，否则解算出来的位姿会有系统性偏差。</p>
+
+<table>
+  <tr><th>参数</th><th>获取方式</th><th>注意</th></tr>
+  <tr><td>fx, fy, cx, cy</td><td>离线棋盘格标定（OpenCV <code>calibrateCamera</code>）</td><td><b>必须按实际采集分辨率存</b>。若浏览器给的是 1280×720，就标定并存储该分辨率下的内参，运行时不要缩放</td></tr>
+  <tr><td>畸变 k1,k2,p1,p2,k3</td><td>同上</td><td>手机广角畸变不可忽略，尤其边缘区域；检测到角点后先 <code>undistortPoints</code> 再 PnP</td></tr>
+  <tr><td>分辨率</td><td>浏览器 <code>getUserMedia</code> 请求值与实际值可能不同</td><td>必须读 <code>track.getSettings()</code> 拿真实值，并据此选内参配置</td></tr>
+</table>
+
+<div class="callout warn">
+  <strong>坑：浏览器拿不到可靠内参。</strong> Web 没有标准 API 暴露焦距。可行做法：① 用目标设备离线标定一次，把结果存成 JSON 随应用发布；② 或从照片 EXIF 读 35mm 等效焦距再换算。切换设备或分辨率时必须重新标定——这是运维成本，要写进 SOP。
+</div>
+
+<h3>4.2 标记布置与位姿测定</h3>
+
+<ul>
+  <li><b>标记族：</b>用 <b>AprilTag 36h11</b>（比 ArUco 抗遮挡、抗模糊，误检率低）。</li>
+  <li><b>尺寸：</b>沙盘 4.8×5.5 m、观察距离 4–9 m，建议标记边长 <b>120–150 mm</b>。太小在 9 m 外像素不足；太大容易被 Pad 边框或视角切掉。</li>
+  <li><b>数量与布局：</b><b>≥6 个</b>，沿底座四周均匀分布（每条边 1–2 个）。目标是<b>任意合法视角下至少 3 个可见</b>——这是解算稳定性的底线。</li>
+  <li><b>高度：</b>贴在底座<b>侧立面</b>（而非台面），因为台面起伏会遮挡；侧立面朝向观察者，且不与地形争视觉。</li>
+  <li><b>材质：</b>哑光覆膜，避免环境光镜面反射导致检测失败。</li>
+</ul>
+
+<p><b>标记位姿测定方法（三选一，精度递增）：</b></p>
+<ol>
+  <li><b>图纸法</b>：制作底座时按 CAD 图纸预留标记位置，直接读图纸坐标。误差约 ±1–2 mm。</li>
+  <li><b>全站仪/激光跟踪仪</b>：现场实测每个标记四角。误差 &lt;0.5 mm。推荐用于正式展项。</li>
+  <li><b>自标定法</b>：把已知尺寸的标定板放在台面若干位置，用同一相机多视角拍摄，联合优化标记位姿与相机内参（bundle adjustment）。无需外部仪器，但实现复杂。</li>
+</ol>
+
+<div class="callout">
+  <strong>务必记住：</strong><code>markers.json</code> 是<b>唯一真值来源</b>。标记一旦被碰动，整个配准就废了。物理上要做防撞保护 + 定期复核（现场 SOP：每周用标记复核工装检查一次）。
+</div>
+
+<h3>4.3 单帧解算：从标记到 T<sub>WC</sub></h3>
+
+<pre>1. 灰度化 + 自适应阈值 → 检测四边形候选 → 解码 ID
+2. 对每个成功解码的标记 i：
+     imagePoints  = 该标记 4 个角点的像素坐标（先去畸变）
+     objectPoints = markers.json 中该标记 4 角点在 W 下的三维坐标
+3. solvePnP(objectPoints, imagePoints, K, dist, flags=SOLVEPNP_IPPE_SQUARE)
+     → 得到 R, t（相机在标记系中的位姿）
+4. 若可见标记 ≥ 2：对各自解算结果做一致性检查
+     - 重投影误差 RMS 应 < 1.5 px，超阈值的标记剔除
+     - 用所有内点联合求解（多标记共面或非共面都可）
+5. 得到 T_WC（相机在沙盘系中的位姿）
+6. 转换到 Three.js 约定（Y 轴向上、右手系、相机朝 -Z）：
+     threeCamera.position.copy(T_WC.position)
+     threeCamera.quaternion.copy(T_WC.quaternion)</pre>
+
+<p class="muted">实现建议：<code>solvePnP</code> 用 IPPE_SQUARE（单标记四角专用，比通用 EPnP 更稳）；多标记用 RANSAC 剔除误检。整个流程可以走 OpenCV.js（WASM），但更推荐用 <code>apriltag</code> 的 WASM 编译版做检测、自己写 PnP——OpenCV.js 体积大（~8 MB）。</p>
+
+<h2 id="s5">五、每帧处理管线与性能预算</h2>
+
+<table>
+  <tr><th>阶段</th><th>耗时目标</th><th>优化手段</th></tr>
+  <tr><td>采集（720p）</td><td>—</td><td>用 <code>requestVideoFrameCallback</code> 拿精确采集时间戳</td></tr>
+  <tr><td>降采样 + 灰度</td><td>&lt; 1 ms</td><td>降到 640×360 做检测足够（标记够大）</td></tr>
+  <tr><td>标记检测</td><td>&lt; 6 ms</td><td><b>ROI 加速</b>：只在上一帧标记投影附近搜索；检测与渲染分线程（Web Worker）</td></tr>
+  <tr><td>PnP 解算</td><td>&lt; 0.5 ms</td><td>—</td></tr>
+  <tr><td>滤波</td><td>&lt; 0.1 ms</td><td>—</td></tr>
+  <tr><td>Three.js 渲染</td><td>&lt; 8 ms</td><td>5,635 点 + 1.1 万连线很轻，瓶颈在遮挡体渲染，用深度预通道即可</td></tr>
+  <tr><td><b>合计</b></td><td><b>&lt; 16 ms → 60 fps 有余量</b></td><td></td></tr>
+</table>
+
+<div class="callout warn">
+  <strong>关键：时间戳要贯穿全链路。</strong>相机帧从"曝光"到"可用"通常有 30–80 ms 延迟。如果直接拿"解算时刻"当位姿时间，快速转动时内容会明显滞后。必须：① 记录曝光时间戳；② 用 IMU 把位姿<b>外推</b>到当前渲染时刻；③ 渲染时用"当前时刻 - 采集延迟"查位姿。
+</div>
+
+<h2 id="s6">六、稳定性：滤波与丢失恢复</h2>
+
+<p><code>AR-INTEGRATION.md</code> 里已经列了正确方向，这里是可落地的参数化实现。</p>
+
+<h3>6.1 滤波：位置与姿态分开处理</h3>
+<table>
+  <tr><th>量</th><th>方法</th><th>建议参数</th></tr>
+  <tr><td>位置</td><td><b>One Euro Filter</b>（自适应低通，慢速时强平滑、快速时低延迟）</td><td><code>minCutoff = 0.8 Hz</code>、<code>beta = 0.007</code>、<code>dCutoff = 1.0</code></td></tr>
+  <tr><td>姿态</td><td>四元数 <b>slerp</b> 向目标姿态插值（不要对欧拉角滤波，会有万向锁与跳变）</td><td>平滑系数按帧率归一：<code>α = 1 - exp(-dt/τ)</code>，τ ≈ 0.04 s</td></tr>
+  <tr><td>静止死区</td><td>位姿变化小于阈值时冻结输出，消除亚像素抖动</td><td>角度 &lt; 0.05°、位置 &lt; 0.5 mm 时不动</td></tr>
+</table>
+
+<div class="callout bad">
+  <strong>绝对不要做的事：</strong>对地形、图标、连线、卡片<b>分别</b>滤波。这会让它们以不同相位漂移，出现"卡片和连线脱开"的经典 bug。正确做法是<b>只对唯一的 T<sub>WC</sub> 滤波</b>，所有内容共享同一变换——现有代码已经天然满足这一点（全部挂在同一个 scene 下）。
+</div>
+
+<h3>6.2 丢失恢复策略</h3>
+<table>
+  <tr><th>状态</th><th>条件</th><th>行为</th></tr>
+  <tr><td>正常</td><td>可见标记 ≥ 3，重投影 RMS &lt; 1.5 px</td><td>正常解算 + 滤波</td></tr>
+  <tr><td>降级</td><td>可见标记 1–2</td><td>仍解算但提高平滑强度；同时用 IMU 陀螺仪积分补旋转</td></tr>
+  <tr><td>短时丢失</td><td>&lt; 200 ms 无解</td><td><b>冻结最后可靠位姿</b>，画面保持（用户几乎察觉不到）</td></tr>
+  <tr><td>持续丢失</td><td>&gt; 200 ms</td><td>内容整体淡出至 30% 不透明度，界面提示"请将 Pad 对准沙盘"，<b>不要</b>继续显示过期锚点</td></tr>
+  <tr><td>重新锁定</td><td>再次解算成功</td><td>淡入恢复；若位姿跳变 &gt; 50 mm，做 0.3 s 过渡而不是瞬移</td></tr>
+</table>
+
+<p class="muted">IMU 补充：<code>DeviceOrientationEvent</code> 在 iOS 需要用户手势授权（<code>requestPermission()</code>），且浏览器给的姿态精度有限、没有磁偏补偿。它只适合做<b>短时（&lt;1 s）旋转外推</b>，不能作为独立跟踪源。</p>
+
+<h2 id="s7">七、遮挡：用已知 DEM 做深度遮挡</h2>
+
+<p>这是本项目<b>相对通用 AR 的最大优势</b>——你手里有精确的三维几何，不需要深度传感器。</p>
+
+<div class="callout good">
+  <strong>核心洞察：</strong>配准成功后，虚拟 DEM 网格与实体沙盘表面在空间上重合。所以只要<b>让虚拟地形继续写入深度缓冲但不写颜色</b>，它就是一个完美的遮挡体——山体后面的扫描点会被自动正确遮挡。
+</div>
+
+<pre>// 修改 app.js 的 onReferenceChange 回调
+onReferenceChange(visible) {
+  if (arMode) {
+    // AR 模式：地形不显示，但保留深度写入，充当遮挡体
+    terrain.visible = true;
+    terrain.material.colorWrite = false;   // 关键
+    terrain.material.depthWrite = true;
+    for (const o of referenceObjects) o.visible = false;  // 底座/地面网格隐藏
+  } else {
+    terrain.visible = visible;
+    terrain.material.colorWrite = true;
+    for (const o of referenceObjects) o.visible = visible;
+  }
+}</pre>
+
+<p>现有代码已经满足前提条件：点云与连线是 <code>transparent: true, depthWrite: false, depthTest: true</code>，会被排在<b>不透明物体之后</b>渲染，因此能正确接受地形的深度测试。<b>只需上面这一处改动。</b></p>
+
+<h3>进阶：真实遮挡（可选）</h3>
+<ul>
+  <li><b>LiDAR 方案</b>：若 Pad 是 iPad Pro / iPhone Pro，ARKit 的 <code>sceneDepth</code> 可提供真实深度图，能遮挡"实体沙盘上放的其他物体"（如人手的投影、边缘挡板）。代价是必须走原生路线 B。</li>
+  <li><b>模型误差补偿</b>：实体沙盘的制作精度（±1–2 mm）会造成局部遮挡边缘不齐。可对遮挡体做微小的<b>向内收缩</b>（法线方向 -1 mm），避免出现"虚拟内容在实体表面上一闪一闪"的 z-fighting 观感。</li>
+  <li><b>注意扫描点的抬高量</b>：现有点云/连线统一抬高 <code>lift = 3.5 mm</code>。遮挡体就是原始 DEM，所以贴合表面的点不会被自己遮挡——这个设计在 AR 下依然成立，不需要改。</li>
+</ul>
+
+<h2 id="s8">八、交互重设计</h2>
+
+<p>现有交互是"鼠标驱动"，在 AR 中<b>大部分会被物理运动取代</b>。需要明确哪些留、哪些改、哪些删。</p>
+
+<table>
+  <tr><th>现有交互</th><th>AR 中的处理</th><th>原因</th></tr>
+  <tr><td>支架滑杆：安装高度 / 离中心距离 / 沿边左右位置</td><td><span class="badge b-bad">移除</span>（降级为校准面板）</td><td>Pad 的真实位置由物理支架决定，并由跟踪测得。手动调只会与真实位姿打架</td></tr>
+  <tr><td>镜头缩放 1–3.5×</td><td><span class="badge b-bad">移除</span></td><td>真实光学变焦由设备决定；数字变焦会破坏内参与配准</td></tr>
+  <tr><td>拖动画面改视线 / 方向键</td><td><span class="badge b-bad">移除</span></td><td>直接转动 Pad 即可，这是 AR 最自然的部分</td></tr>
+  <tr><td>滚轮调距离</td><td><span class="badge b-bad">移除</span></td><td>走近走远即可</td></tr>
+  <tr><td>准心 dwell 聚焦（0.5 s）</td><td><span class="badge b-ok">保留</span></td><td>天然适配 AR，是凝视交互的标准范式</td></tr>
+  <tr><td>点击地形触发扫描</td><td><span class="badge b-warn">改为触屏点选</span></td><td>射线从真实相机位姿发出即可，逻辑不变</td></tr>
+  <tr><td>侧栏地点列表</td><td><span class="badge b-ok">保留</span>（改为浮层）</td><td>作为"看不准时"的兜底选择方式</td></tr>
+  <tr><td>信息卡四角展开</td><td><span class="badge b-ok">保留</span></td><td>已从世界坐标投影到屏幕，相机一换就自动跟随</td></tr>
+</table>
+
+<div class="callout good">
+  <strong>现有架构的一个宝贵特性：</strong><code>updateSites()</code> 与 <code>layoutStory()</code> 已经用 <code>worldPoint.project(camera)</code> 把三维锚点投到屏幕坐标，再用 DOM 渲染卡片。这意味着<b>只要把真实位姿喂给 <code>camera</code>，整套 UI 会自动跟随</b>，几乎不用改。这是当初设计得好的地方。
+</div>
+
+<h3>需要新增的交互</h3>
+<ul>
+  <li><b>校准入口</b>：首次部署时引导操作员把 Pad 对准沙盘，确认跟踪锁定，写入 <code>markers.json</code> 校验值。</li>
+  <li><b>跟踪状态指示</b>：一个不显眼的小角标，显示"已锁定 / 降级 / 搜索中"，方便现场人员判断。</li>
+  <li><b>触屏点选</b>：<code>pointerup</code> 逻辑已有，只需把射线源从"模拟相机"换成"真实相机"，无需改动。</li>
+</ul>
+
+<h2 id="s9">九、物理沙盘与现场要求</h2>
+
+<table>
+  <tr><th>项</th><th>要求</th><th>不满足的后果</th></tr>
+  <tr>
+    <td>台面尺寸</td>
+    <td><b>4.8 × 5.5 m</b>（地形区），底座约 5.12 × 5.82 m</td>
+    <td>虚拟内容整体缩放错误，边缘锚点严重偏离</td>
+  </tr>
+  <tr>
+    <td>垂直夸张</td>
+    <td><b>16.0×</b>，最大起伏 <b>29 cm</b></td>
+    <td>山体高度对不上，扫描点穿模或浮空</td>
+  </tr>
+  <tr>
+    <td>表面纹理</td>
+    <td>可直接打印 <code>terrain-color.png</code>（1014×1159）作为底图</td>
+    <td>无底图则缺少视觉参照，用户难以判断配准是否准确</td>
+  </tr>
+  <tr>
+    <td>标记位姿真值</td>
+    <td>测量精度 ≤ 1 mm，写入 <code>markers.json</code></td>
+    <td>系统性配准偏差，且无法通过滤波修正</td>
+  </tr>
+  <tr>
+    <td>刚性</td>
+    <td>底座与标记<b>不可有相对位移</b>；加防撞保护</td>
+    <td>配准随使用逐渐失效</td>
+  </tr>
+  <tr>
+    <td>光照</td>
+    <td>均匀漫射，避免强方向光与镜面反光；标记哑光覆膜</td>
+    <td>标记检测率下降，出现闪烁式丢失</td>
+  </tr>
+  <tr>
+    <td>环境</td>
+    <td>背景尽量简洁、避免大面积高对比纹理</td>
+    <td>误检增加，PnP 被错误标记污染</td>
+  </tr>
+  <tr>
+    <td>网络</td>
+    <td>首次加载需 HTTPS（<code>getUserMedia</code> 硬性要求）</td>
+    <td>HTTP 下摄像头直接不可用</td>
+  </tr>
+</table>
+
+<div class="callout warn">
+  <strong>关于 HTTPS：</strong>现有部署走 Cloudflare Workers，本身就是 HTTPS，这点没问题。但要注意现有 <code>DEPLOYMENT.md</code> 的"10 天到期"机制——正式展项<b>不能</b>再用带到期拦截的 Worker 配置，需要改成长期有效的正式部署（去掉 <code>PREVIEW_EXPIRES_AT</code> 逻辑或设为远期）。
+</div>
+
+<h2 id="s10">十、分阶段实施计划</h2>
+
+<div class="phase"><div class="n">0</div><div class="b">
+  <h4>物理与标定准备 <span class="badge b-info">前置，必须最先做</span></h4>
+  <p>① 确认/制作实体沙盘（尺寸、16× 垂直夸张、打印底图）；② 设计底座标记布局图；③ 完成相机内参标定流程并固化为 JSON；④ 测定并固化 <code>markers.json</code>。</p>
+  <p class="deliver">交付：沙盘实物 · 内参配置 · markers.json · 标定 SOP</p>
+</div></div>
+
+<div class="phase"><div class="n">1</div><div class="b">
+  <h4>浏览器标记跟踪 PoC</h4>
+  <p>接入 AprilTag WASM 检测 + PnP 解算；把解算位姿直接接到 Three.js 相机；保留一个调试开关，可随时切回模拟相机做对比。目标是"能跑通、能看到内容贴住沙盘"。</p>
+  <p class="deliver">交付：tracker.js · 能演示的 AR 模式 · 配准误差初测数据</p>
+</div></div>
+
+<div class="phase"><div class="n">2</div><div class="b">
+  <h4>稳定性工程</h4>
+  <p>One Euro 滤波（位置）+ slerp（姿态）；时间戳贯穿链路 + IMU 外推；实现五态丢失恢复状态机；加跟踪状态指示。</p>
+  <p class="deliver">交付：静止抖动 ≤1 px · 运动延迟 ≤50 ms · 重定位 &lt;800 ms</p>
+</div></div>
+
+<div class="phase"><div class="n">3</div><div class="b">
+  <h4>遮挡与视觉融合</h4>
+  <p>启用 <code>colorWrite=false</code> 深度遮挡；对遮挡体做 1 mm 内缩避免 z-fighting；校正全息内容的亮度/对比度使其在实景上可读；可选接入 LiDAR 真实遮挡。</p>
+  <p class="deliver">交付：山体后内容正确遮挡 · 实景可读性通过目视评审</p>
+</div></div>
+
+<div class="phase"><div class="n">4</div><div class="b">
+  <h4>交互重设计</h4>
+  <p>移除鼠标专属交互（滑杆/拖动/滚轮），改为触屏 + 凝视；校准入口与引导流程；卡片锚定世界坐标的边界情况（贴边、遮挡、多地点重叠）。</p>
+  <p class="deliver">交付：AR 交互规格 · 无鼠标可完整操作</p>
+</div></div>
+
+<div class="phase"><div class="n">5</div><div class="b">
+  <h4>现场验收与调优</h4>
+  <p>按第 11 节用例逐条测试；在真实 Pad、真实观察距离、真实光照下重标所有阈值（<b>网页像素参数不等于设备角度阈值</b>）；输出运维 SOP。</p>
+  <p class="deliver">交付：验收报告 · 现场调参表 · 运维 SOP（含标记复核流程）</p>
+</div></div>
+
+<div class="callout">
+  <strong>决策点设在阶段 2 结束。</strong>如果滤波后仍达不到验收线，或标记遮挡率过高，此时切换到路线 B（Unity + AR Foundation）。已有的标定数据、标记位姿、验收用例、交互规格<b>全部可复用</b>，沉没成本很低。
+</div>
+
+<h2 id="s11">十一、验收标准与测试用例</h2>
+
+<h3>11.1 量化指标</h3>
+<table>
+  <tr><th>指标</th><th>目标</th><th>可接受</th><th>测量方法</th></tr>
+  <tr><td>配准精度（锚点 vs 实体地物）</td><td>≤ 10 mm</td><td>≤ 20 mm</td><td>在沙盘上放置已知坐标的检验点，测量虚拟锚点投影偏差</td></tr>
+  <tr><td>静止抖动</td><td>≤ 1 px</td><td>≤ 2 px</td><td>Pad 固定不动录屏 10 s，统计锚点像素坐标标准差</td></tr>
+  <tr><td>运动延迟</td><td>≤ 40 ms</td><td>≤ 80 ms</td><td>快速转动时录屏，逐帧比对实体边缘与虚拟内容边缘</td></tr>
+  <tr><td>重定位时间</td><td>&lt; 500 ms</td><td>&lt; 1 s</td><td>遮住摄像头再放开，计时到重新锁定</td></tr>
+  <tr><td>帧率</td><td>60 fps</td><td>30 fps</td><td>长时间运行统计</td></tr>
+  <tr><td>遮挡正确率</td><td colspan="2">山体后的扫描点 100% 不可见</td><td>目视 + 抽样像素比对</td></tr>
+</table>
+
+<h3>11.2 必测场景（现场验收清单）</h3>
+<ol>
+  <li><b>小幅手抖</b>：Pad 轻微抖动 10 s，内容不应出现可见晃动或"呼吸"。</li>
+  <li><b>快速转动</b>：快速左右/上下扫视，内容不应滞后脱节或甩尾。</li>
+  <li><b>地点边界停留</b>：准心在地点图标边缘反复进出，卡片不应反复开关（现有 160 ms 容错需在真实抖动下重新标定）。</li>
+  <li><b>遮挡识别物</b>：用手或挡板遮住部分标记，跟踪应降级而非跳变；遮住过半标记，应进入"搜索中"提示。</li>
+  <li><b>重新入镜</b>：Pad 完全移开再转回，应能自动重新锁定且无内容瞬移。</li>
+  <li><b>低帧率</b>：人为降帧至 15 fps，滤波与丢失策略不应失控。</li>
+  <li><b>长时间运行</b>：连续运行 2 h，检查位姿漂移与内存占用。</li>
+  <li><b>边缘视角</b>：走到沙盘四角与最远/最近观察距离，配准精度应保持一致。</li>
+  <li><b>环境光变化</b>：开/关室内灯、拉窗帘，跟踪不应中断。</li>
+  <li><b>多点位重叠</b>：两个地点图标在屏幕上靠近时，卡片布局不应重叠错乱。</li>
+</ol>
+
+<h2 id="s12">十二、风险与降级路径</h2>
+
+<table>
+  <tr><th>风险</th><th>概率</th><th>影响</th><th>应对 / 降级</th></tr>
+  <tr>
+    <td>实体沙盘几何与虚拟不一致</td>
+    <td><span class="badge b-bad">高</span></td>
+    <td>致命——配准永远对不上</td>
+    <td>阶段 0 必须锁死；若实体已做好，改 <code>app.js</code> 的垂直映射常量去适配，并重新生成 <code>assets/</code></td>
+  </tr>
+  <tr>
+    <td>标记遮挡率过高</td>
+    <td><span class="badge b-warn">中</span></td>
+    <td>频繁丢失，观感差</td>
+    <td>增加标记数量与冗余布局；提高 IMU 外推权重；必要时加台面标记（做成低调的装饰边框图案）</td>
+  </tr>
+  <tr>
+    <td>浏览器内参不可靠</td>
+    <td><span class="badge b-warn">中</span></td>
+    <td>系统性配准偏差</td>
+    <td>逐设备离线标定并随应用发布；建立"设备-内参"对照表</td>
+  </tr>
+  <tr>
+    <td>WASM 检测性能不足</td>
+    <td><span class="badge b-info">低</span></td>
+    <td>帧率下降</td>
+    <td>降分辨率 + ROI 搜索 + Web Worker 分离；仍不足则迁移原生</td>
+  </tr>
+  <tr>
+    <td>iOS 浏览器限制</td>
+    <td><span class="badge b-info">低</span></td>
+    <td>摄像头/传感器权限</td>
+    <td>标记方案只需 <code>getUserMedia</code>，iOS 支持良好；IMU 需 <code>requestPermission()</code> 用户手势授权，要做好引导</td>
+  </tr>
+  <tr>
+    <td>现场光照导致检测失败</td>
+    <td><span class="badge b-warn">中</span></td>
+    <td>演示中断</td>
+    <td>哑光标记 + 均匀照明设计；准备备用照明方案；加"检测质量"实时指示供现场排查</td>
+  </tr>
+</table>
+
+<h3>降级阶梯（按代价从低到高）</h3>
+<ol>
+  <li><b>标记为主 + IMU 外推</b>（推荐基线）</li>
+  <li><b>标记 + 台面纹理特征点</b>混合跟踪（提高遮挡容忍度）</li>
+  <li><b>机械编码器辅助</b>：若支架是固定的，给各轴装编码器，标记只用于低频校正</li>
+  <li><b>迁移 Unity + AR Foundation</b>（原生 VIO + 图像锚点 + LiDAR 遮挡）</li>
+  <li><b>退回"增强版固定机位"</b>：Pad 完全固定不动，取消跟踪，只保留预标定的单一视角 + 摄像头实景合成——即当前 Demo 的强化版，至少不会失败</li>
+</ol>
+
+<h2 id="s13">十三、与现有代码的映射（具体改动清单）</h2>
+
+<table>
+  <tr><th>文件</th><th>改动</th><th>工作量</th></tr>
+  <tr>
+    <td><code>tracker.js</code> <span class="badge b-rec">新增</span></td>
+    <td>标记检测（AprilTag WASM）+ PnP 解算 + 多标记一致性检查，输出统一位姿接口</td>
+    <td><span class="badge b-warn">大</span></td>
+  </tr>
+  <tr>
+    <td><code>pose-filter.js</code> <span class="badge b-rec">新增</span></td>
+    <td>One Euro（位置）+ slerp（姿态）+ 死区 + 五态丢失状态机</td>
+    <td><span class="badge b-info">中</span></td>
+  </tr>
+  <tr>
+    <td><code>camera-intrinsics.json</code> <span class="badge b-rec">新增</span></td>
+    <td>按设备/分辨率存储 fx,fy,cx,cy,畸变</td>
+    <td><span class="badge b-ok">小</span></td>
+  </tr>
+  <tr>
+    <td><code>markers.json</code> <span class="badge b-rec">新增</span></td>
+    <td>每个标记在 W 系下的位姿真值</td>
+    <td><span class="badge b-ok">小</span></td>
+  </tr>
+  <tr>
+    <td><code>camera-preview.js</code></td>
+    <td>已有 <code>getUserMedia</code> 生命周期管理可复用；新增帧回调，把帧喂给 tracker</td>
+    <td><span class="badge b-ok">小</span></td>
+  </tr>
+  <tr>
+    <td><code>app.js</code> · <code>updateCamera()</code></td>
+    <td>改为由跟踪位姿驱动，替代 <code>settings.height/distance/lateral/yaw/pitch</code></td>
+    <td><span class="badge b-info">中</span></td>
+  </tr>
+  <tr>
+    <td><code>app.js</code> · <code>updateLens()</code></td>
+    <td>用真实内参（fx,fy）替代 <code>BASE_VERTICAL_FOV + zoom</code> 的模拟模型</td>
+    <td><span class="badge b-info">中</span></td>
+  </tr>
+  <tr>
+    <td><code>app.js</code> · <code>onReferenceChange()</code></td>
+    <td>AR 模式下 <code>colorWrite=false</code> 保留深度，充当遮挡体</td>
+    <td><span class="badge b-ok">小</span></td>
+  </tr>
+  <tr>
+    <td><code>app.js</code> · <code>setupControls()</code></td>
+    <td>滑杆/拖动/滚轮移入调试面板，默认隐藏</td>
+    <td><span class="badge b-ok">小</span></td>
+  </tr>
+  <tr>
+    <td><code>app.js</code> · <code>updateSites()</code> / <code>layoutStory()</code></td>
+    <td><b>基本不动</b>——已是从世界坐标投影，相机一换自动跟随</td>
+    <td><span class="badge b-ok">无</span></td>
+  </tr>
+  <tr>
+    <td><code>scan-surface.js</code></td>
+    <td><b>不动</b>——点云/连线/shader 与相机来源无关</td>
+    <td><span class="badge b-ok">无</span></td>
+  </tr>
+  <tr>
+    <td><code>index.html</code> / <code>style.css</code></td>
+    <td>加跟踪状态角标、校准引导浮层</td>
+    <td><span class="badge b-ok">小</span></td>
+  </tr>
+  <tr>
+    <td><code>wrangler.json</code></td>
+    <td>正式部署去掉 10 天到期拦截，改长期有效</td>
+    <td><span class="badge b-ok">小</span></td>
+  </tr>
+</table>
+
+<div class="callout good">
+  <strong>改动量的好消息：</strong>渲染层（<code>scan-surface.js</code>、材质、着色器、地点数据、卡片布局）几乎<b>完全不需要改</b>。真正的新代码集中在"相机位姿从哪来"这一件事上——两个新模块 + 三处回调替换。这也是推荐路线 A 的最大价值。
+</div>
+
+<footer>
+  方案基于 <code>hunan-terrain-ar-demo</code> 源码实测参数（4.8×5.5 m 台面 · 16.0× 垂直夸张 · 256×292 网格 · Three.js r180）与
+  <code>AR-INTEGRATION.md</code> / <code>AR-MR特效参考调研.md</code> 的既有结论推导。<br>
+  生成日期 2026-09-29 · 所有阈值需在真实设备与现场光照下重新标定后确定。
+</footer>
+
+</div>
+</body>
+</html>

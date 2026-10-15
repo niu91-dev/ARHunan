@@ -1,0 +1,386 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>设备能力自检 · 小米平板6 AR 方案</title>
+<style>
+  :root{
+    --bg:#0b1418; --panel:#101e24; --panel2:#0d1a1f; --line:#1d333c;
+    --ink:#dceef0; --dim:#8fadb5; --dim2:#6d8b93;
+    --ok:#6fd48a; --warn:#f0b357; --bad:#ef6b6b; --info:#4fd1c5;
+    --mono:ui-monospace,SFMono-Regular,Consolas,monospace;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:15px/1.7 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+    padding:16px 14px 60px;-webkit-text-size-adjust:100%}
+  h1{font-size:19px;margin:6px 0 4px;font-weight:700}
+  .sub{color:var(--dim);font-size:12.5px;margin:0 0 16px}
+  h2{font-size:15px;margin:22px 0 10px;padding-left:10px;border-left:3px solid var(--info);font-weight:600}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin:10px 0}
+  .row{display:flex;justify-content:space-between;align-items:baseline;gap:10px;padding:6px 0;
+    border-bottom:1px solid rgba(29,51,60,.6);font-size:13.5px}
+  .row:last-child{border-bottom:none}
+  .row .k{color:var(--dim);flex:0 0 auto}
+  .row .v{font-family:var(--mono);font-size:13px;text-align:right;word-break:break-all}
+  .badge{display:inline-block;font:600 11.5px/1 var(--mono);padding:4px 9px;border-radius:999px;border:1px solid;white-space:nowrap}
+  .b-ok{color:var(--ok);border-color:#2c5a3c;background:#12261b}
+  .b-warn{color:var(--warn);border-color:#5c4a22;background:#241d0f}
+  .b-bad{color:var(--bad);border-color:#5c2a2a;background:#261212}
+  .b-info{color:var(--info);border-color:#26504d;background:#0f2422}
+  .b-idle{color:var(--dim);border-color:var(--line);background:var(--panel2)}
+  .big{display:flex;gap:8px;margin:10px 0}
+  .big > div{flex:1;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px;text-align:center}
+  .big .n{font:700 22px/1.15 var(--mono);color:#7ee0d2}
+  .big .l{font-size:11px;color:var(--dim);margin-top:4px;letter-spacing:.04em}
+  button{font:600 14px/1 inherit;color:#0b1418;background:var(--info);border:none;border-radius:10px;
+    padding:13px 18px;width:100%;margin:8px 0;cursor:pointer}
+  button.ghost{background:transparent;color:var(--info);border:1px solid #26504d}
+  button:disabled{opacity:.45}
+  .note{font-size:12.5px;color:var(--dim);margin:8px 0 0}
+  .verdict{background:var(--panel2);border:1px solid var(--line);border-left:3px solid var(--info);
+    border-radius:0 10px 10px 0;padding:12px 16px;margin:14px 0;font-size:13.5px}
+  .verdict.ok{border-left-color:var(--ok)}
+  .verdict.warn{border-left-color:var(--warn)}
+  .verdict.bad{border-left-color:var(--bad)}
+  pre{background:#081216;border:1px solid var(--line);border-radius:10px;padding:12px;overflow:auto;
+    font:11.5px/1.6 var(--mono);color:#9fd8cf;max-height:320px;white-space:pre-wrap;word-break:break-all}
+  .live{font-family:var(--mono);font-size:12.5px;color:#9fd8cf}
+  .bar{height:6px;border-radius:3px;background:#0a161a;border:1px solid var(--line);overflow:hidden;margin-top:6px}
+  .bar > i{display:block;height:100%;background:linear-gradient(90deg,#2f6d66,#4fd1c5);width:0%}
+</style>
+</head>
+<body>
+
+<h1>设备能力自检</h1>
+<p class="sub">用于小米平板6 的 AR 方案选型 · 请在<b>目标设备</b>上用浏览器打开本页（建议 HTTPS）</p>
+
+<div id="overall" class="verdict">正在检测…</div>
+
+<h2>1 · 运行环境</h2>
+<div class="card" id="env"></div>
+
+<h2>2 · 姿态传感器（核心）</h2>
+<div class="card">
+  <div class="row"><span class="k">DeviceOrientation 事件</span><span class="v" id="do-support">—</span></div>
+  <div class="row"><span class="k">事件是否已触发</span><span class="v" id="do-fired">—</span></div>
+  <div class="row"><span class="k">绝对朝向（磁力计）</span><span class="v" id="do-absolute">—</span></div>
+  <div class="row"><span class="k">陀螺仪实际输出</span><span class="v" id="gyro-real">—</span></div>
+</div>
+<div class="big">
+  <div><div class="n" id="v-alpha">—</div><div class="l">ALPHA 偏航</div></div>
+  <div><div class="n" id="v-beta">—</div><div class="l">BETA 俯仰</div></div>
+  <div><div class="n" id="v-gamma">—</div><div class="l">GAMMA 翻滚</div></div>
+</div>
+<div class="card">
+  <div class="row"><span class="k">判定</span><span class="v" id="att-verdict">—</span></div>
+  <div class="note">转动平板观察：<b>BETA 跟随上下倾斜</b>即为加速度计正常；<b>ALPHA 跟随左右旋转</b>即为偏航可用。ALPHA 若在静止时持续变化，说明是陀螺仪积分（会漂移）。</div>
+</div>
+
+<h2>3 · 漂移测试（决定是否需要 AprilTag）</h2>
+<div class="card">
+  <div class="row"><span class="k">测试状态</span><span class="v" id="drift-state">未开始</span></div>
+  <div class="row"><span class="k">已用时</span><span class="v" id="drift-time">0.0 s</span></div>
+  <div class="row"><span class="k">当前漂移</span><span class="v" id="drift-now">—</span></div>
+  <div class="row"><span class="k">折算每分钟</span><span class="v" id="drift-rate">—</span></div>
+</div>
+<div class="bar"><i id="drift-bar"></i></div>
+<button id="drift-start">开始漂移测试（平板保持不动 60 秒）</button>
+<div class="note">把平板放到支架上、保持完全静止，然后开始。这是判断「纯陀螺仪方案能不能用」的<b>唯一可靠依据</b>。</div>
+
+<h2>4 · ARCore / WebXR</h2>
+<div class="card" id="xr"></div>
+
+<h2>5 · 摄像头</h2>
+<div class="card" id="cam"></div>
+
+<h2>6 · 外设（编码器 / 蓝牙方案）</h2>
+<div class="card" id="periph"></div>
+
+<h2>7 · 导出报告</h2>
+<button id="export">生成报告文本</button>
+<button class="ghost" id="copy">复制到剪贴板</button>
+<pre id="report">点击上方按钮生成…</pre>
+
+<script>
+const $ = id => document.getElementById(id);
+const R = {};
+
+function badge(text, kind) {
+  return '<span class="badge b-' + kind + '">' + text + '</span>';
+}
+function row(k, v) {
+  return '<div class="row"><span class="k">' + k + '</span><span class="v">' + v + '</span></div>';
+}
+
+/* ---------- 1. 环境 ---------- */
+const ua = navigator.userAgent;
+R.https = location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+R.ua = ua;
+R.screen = screen.width + 'x' + screen.height + ' @' + window.devicePixelRatio + 'x';
+R.viewport = innerWidth + 'x' + innerHeight;
+
+const isXiaomi = /xiaomi|redmi|mi pad|23043rp/i.test(ua);
+const isAndroid = /android/i.test(ua);
+const androidVer = (ua.match(/Android\s+([\d.]+)/i) || [])[1] || '未知';
+const chromeVer = (ua.match(/Chrome\/([\d.]+)/i) || [])[1] || '未知';
+
+$('env').innerHTML =
+  row('HTTPS 安全上下文', R.https ? badge('是', 'ok') : badge('否（摄像头/传感器可能不可用）', 'bad')) +
+  row('操作系统', isAndroid ? 'Android ' + androidVer : '非 Android') +
+  row('浏览器内核', /Chrome/i.test(ua) ? 'Chrome ' + chromeVer : '非 Chrome（建议用 Chrome）') +
+  row('疑似小米设备', isXiaomi ? badge('是', 'ok') : badge('未识别', 'idle')) +
+  row('屏幕', R.screen) +
+  row('视口', R.viewport) +
+  row('屏幕方向', (screen.orientation && screen.orientation.type) || '未知');
+
+/* ---------- 2. 姿态传感器 ---------- */
+let lastOrient = null, absoluteSeen = false, relativeSeen = false, doFired = false;
+let alphaSamples = [], betaSeen = false, gammaSeen = false;
+
+const hasDOE = typeof DeviceOrientationEvent !== 'undefined';
+$('do-support').innerHTML = hasDOE ? badge('支持', 'ok') : badge('不支持', 'bad');
+
+function onOrient(e) {
+  doFired = true;
+  lastOrient = e;
+  if (e.absolute === true) absoluteSeen = true;
+  if (e.alpha !== null && e.alpha !== undefined) {
+    alphaSamples.push(e.alpha);
+    if (alphaSamples.length > 240) alphaSamples.shift();
+    $('v-alpha').textContent = e.alpha.toFixed(1) + '°';
+  } else {
+    $('v-alpha').textContent = 'null';
+  }
+  if (e.beta !== null && e.beta !== undefined) { betaSeen = true; $('v-beta').textContent = e.beta.toFixed(1) + '°'; }
+  if (e.gamma !== null && e.gamma !== undefined) { gammaSeen = true; $('v-gamma').textContent = e.gamma.toFixed(1) + '°'; }
+  updateSensorVerdict();
+}
+function onOrientAbs(e) {
+  absoluteSeen = true;
+  onOrient(e);
+}
+
+function updateSensorVerdict() {
+  $('do-fired').innerHTML = doFired ? badge('已触发', 'ok') : badge('未触发', 'warn');
+  const compass = (lastOrient && lastOrient.webkitCompassHeading !== undefined && lastOrient.webkitCompassHeading !== null);
+  if (absoluteSeen || compass) {
+    $('do-absolute').innerHTML = badge('可用（有绝对参考）', 'ok');
+  } else if (doFired) {
+    $('do-absolute').innerHTML = badge('不可用（仅相对）', 'warn');
+  } else {
+    $('do-absolute').innerHTML = badge('待定', 'idle');
+  }
+  if (betaSeen) {
+    $('gyro-real').innerHTML = badge('加速度计正常（BETA 有值）', 'ok');
+  } else if (doFired) {
+    $('gyro-real').innerHTML = badge('未见 BETA 值', 'warn');
+  }
+  let v = '—';
+  if (doFired && betaSeen) v = badge('俯仰可用；偏航需看漂移测试', 'info');
+  else if (!doFired) v = badge('传感器未响应', 'bad');
+  $('att-verdict').innerHTML = v;
+}
+
+if (hasDOE) {
+  window.addEventListener('deviceorientationabsolute', onOrientAbs, true);
+  window.addEventListener('deviceorientation', onOrient, true);
+}
+/* iOS 需要手势授权 */
+const needPerm = hasDOE && typeof DeviceOrientationEvent.requestPermission === 'function';
+
+/* ---------- 3. 漂移测试 ---------- */
+let driftT0 = 0, driftA0 = null, driftTimer = null, driftMax = 0;
+
+function angDiff(a, b) {
+  let d = a - b;
+  while (d > 180) d -= 360;
+  while (d < -180) d += 360;
+  return d;
+}
+
+function startDrift() {
+  if (!lastOrient || lastOrient.alpha === null || lastOrient.alpha === undefined) {
+    $('drift-state').textContent = '无法开始：未收到 ALPHA 数据';
+    return;
+  }
+  driftT0 = performance.now();
+  driftA0 = lastOrient.alpha;
+  driftMax = 0;
+  $('drift-start').disabled = true;
+  $('drift-state').textContent = '进行中…';
+  driftTimer = setInterval(() => {
+    if (!lastOrient || lastOrient.alpha === null) return;
+    const t = (performance.now() - driftT0) / 1000;
+    const d = angDiff(lastOrient.alpha, driftA0);
+    driftMax = Math.max(driftMax, Math.abs(d));
+    $('drift-time').textContent = t.toFixed(1) + ' s';
+    $('drift-now').textContent = d.toFixed(2) + '°';
+    $('drift-rate').textContent = t > 2 ? (d / t * 60).toFixed(2) + ' °/min' : '—';
+    $('drift-bar').style.width = Math.min(100, t / 60 * 100) + '%';
+    if (t >= 60) stopDrift(true);
+  }, 100);
+}
+
+function stopDrift(done) {
+  clearInterval(driftTimer);
+  driftTimer = null;
+  $('drift-start').disabled = false;
+  $('drift-start').textContent = '重新测试';
+  $('drift-state').textContent = done ? '已完成（60 秒）' : '已停止';
+  R.driftMax = driftMax;
+}
+
+$('drift-start').addEventListener('click', async () => {
+  if (needPerm) {
+    try {
+      const p = await DeviceOrientationEvent.requestPermission();
+      if (p !== 'granted') { $('drift-state').textContent = '权限被拒绝'; return; }
+    } catch (e) { $('drift-state').textContent = '权限请求失败：' + e.message; return; }
+  }
+  startDrift();
+});
+
+/* ---------- 4. WebXR / ARCore ---------- */
+(async () => {
+  let html = '';
+  if (!navigator.xr) {
+    html += row('navigator.xr', badge('不存在', 'bad'));
+    html += row('结论', badge('WebXR 不可用 → 走传感器/编码器方案', 'warn'));
+  } else {
+    html += row('navigator.xr', badge('存在', 'ok'));
+    for (const mode of ['immersive-ar', 'immersive-vr', 'inline']) {
+      try {
+        const ok = await navigator.xr.isSessionSupported(mode);
+        html += row('isSessionSupported("' + mode + '")', ok ? badge('支持', 'ok') : badge('不支持', 'idle'));
+        if (mode === 'immersive-ar') R.arSupported = ok;
+      } catch (e) {
+        html += row('isSessionSupported("' + mode + '")', badge('查询失败', 'warn'));
+      }
+    }
+    if (R.arSupported) {
+      html += row('结论', badge('ARCore 可用 → WebXR 方案可行', 'ok'));
+    } else {
+      html += row('结论', badge('ARCore 未就绪（可能缺 Google Play Services for AR）', 'warn'));
+    }
+  }
+  $('xr').innerHTML = html;
+  updateOverall();
+})();
+
+/* ---------- 5. 摄像头 ---------- */
+(async () => {
+  let html = '';
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    html += row('getUserMedia', badge('不可用', 'bad'));
+    $('cam').innerHTML = html;
+    return;
+  }
+  html += row('getUserMedia', badge('可用', 'ok'));
+  try {
+    const devs = await navigator.mediaDevices.enumerateDevices();
+    const cams = devs.filter(d => d.kind === 'videoinput');
+    html += row('摄像头数量', String(cams.length));
+  } catch (e) { /* ignore */ }
+
+  html += row('尝试开启后置摄像头', '<span class="live" id="cam-state">请求中…</span>');
+  $('cam').innerHTML = html;
+  try {
+    const s = await navigator.mediaDevices.getUserMedia({
+      audio: false,
+      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }
+    });
+    const tr = s.getVideoTracks()[0];
+    const st = tr.getSettings ? tr.getSettings() : {};
+    const cap = tr.getCapabilities ? tr.getCapabilities() : {};
+    let extra = '';
+    extra += row('实际分辨率', (st.width || '?') + ' × ' + (st.height || '?'));
+    extra += row('帧率', st.frameRate ? st.frameRate.toFixed(0) + ' fps' : '未知');
+    extra += row('对焦模式', st.focusMode || '未知');
+    if (cap.width && cap.width.max) extra += row('最大分辨率', cap.width.max + ' × ' + (cap.height ? cap.height.max : '?'));
+    extra += row('水平视场（估算）', '浏览器不提供 → 需现场用滑杆对位');
+    $('cam').innerHTML = html + extra;
+    R.camRes = (st.width || '?') + 'x' + (st.height || '?');
+    s.getTracks().forEach(t => t.stop());
+  } catch (e) {
+    $('cam').innerHTML = html.replace('<span class="live" id="cam-state">请求中…</span>',
+      badge('失败：' + e.name, 'bad'));
+  }
+  updateOverall();
+})();
+
+/* ---------- 6. 外设 ---------- */
+function periphUpdate() {
+  const gps = navigator.getGamepads ? navigator.getGamepads() : [];
+  const list = [];
+  for (const g of gps) if (g) list.push(g.id + ' [' + g.axes.length + ' 轴]');
+  const gpTxt = list.length ? badge(list.join(' / '), 'ok') : badge('未检测到手柄', 'idle');
+  const btTxt = navigator.bluetooth ? badge('支持 Web Bluetooth', 'ok') : badge('不支持', 'idle');
+  const usbTxt = navigator.usb ? badge('支持 WebUSB', 'ok') : badge('不支持', 'idle');
+  $('periph').innerHTML =
+    row('已连接游戏手柄', gpTxt) +
+    row('Web Bluetooth', btTxt) +
+    row('WebUSB', usbTxt) +
+    row('说明', '<span style="font-size:12px;color:#8fadb5">插上 USB HID 编码器后，此处应出现手柄条目</span>');
+}
+periphUpdate();
+setInterval(periphUpdate, 2000);
+
+/* ---------- 总体结论 ---------- */
+function updateOverall() {
+  const parts = [];
+  if (!R.https) parts.push(badge('非 HTTPS', 'bad'));
+  if (doFired && betaSeen) parts.push(badge('姿态传感器可用', 'ok'));
+  else if (doFired) parts.push(badge('姿态传感器部分可用', 'warn'));
+  else parts.push(badge('姿态传感器未响应', 'warn'));
+  if (absoluteSeen) parts.push(badge('有绝对朝向', 'ok'));
+  else if (doFired) parts.push(badge('无绝对朝向（偏航会漂移）', 'warn'));
+  if (R.arSupported) parts.push(badge('ARCore 可用', 'ok'));
+  else parts.push(badge('ARCore 待确认', 'idle'));
+
+  let cls = 'warn';
+  if (R.https && doFired && betaSeen && absoluteSeen) cls = 'ok';
+  if (!R.https && !doFired) cls = 'bad';
+  const box = $('overall');
+  box.className = 'verdict ' + cls;
+  box.innerHTML = '<b>总体判定：</b><br>' + parts.join(' ') +
+    '<div style="margin-top:8px;font-size:12.5px;color:#8fadb5">' +
+    '关键看第 3 节的漂移测试：若漂移 &lt; 0.3°/min，纯传感器方案即可；否则需要 AprilTag 或编码器。</div>';
+}
+setInterval(updateOverall, 1500);
+
+/* ---------- 7. 导出 ---------- */
+$('export').addEventListener('click', () => {
+  const rep = {
+    时间: new Date().toLocaleString('zh-CN'),
+    设备UA: R.ua,
+    HTTPS: R.https,
+    屏幕: R.screen,
+    视口: R.viewport,
+    姿态事件已触发: doFired,
+    BETA有值: betaSeen,
+    GAMMA有值: gammaSeen,
+    有绝对朝向: absoluteSeen,
+    漂移测试最大漂移度: R.driftMax === undefined ? null : Number(R.driftMax.toFixed(3)),
+    ARCore可用: R.arSupported === undefined ? null : R.arSupported,
+    摄像头分辨率: R.camRes || null,
+    WebBluetooth: !!navigator.bluetooth,
+    WebUSB: !!navigator.usb
+  };
+  $('report').textContent = JSON.stringify(rep, null, 2);
+});
+$('copy').addEventListener('click', async () => {
+  const t = $('report').textContent;
+  try {
+    await navigator.clipboard.writeText(t);
+    $('copy').textContent = '已复制 ✓';
+  } catch (e) {
+    $('copy').textContent = '复制失败，请长按上方文本手动复制';
+  }
+  setTimeout(() => { $('copy').textContent = '复制到剪贴板'; }, 2000);
+});
+</script>
+</body>
+</html>

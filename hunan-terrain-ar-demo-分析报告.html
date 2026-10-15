@@ -1,0 +1,285 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>深度分析报告 · hunan-terrain-ar-demo</title>
+<style>
+  :root{
+    --bg:#0b1418; --panel:#101e24; --panel2:#0d1a1f; --line:#1d333c;
+    --ink:#dceef0; --dim:#8fadb5; --dim2:#6d8b93;
+    --accent:#4fd1c5; --accent2:#7ee0d2; --warn:#f0b357; --bad:#ef6b6b; --good:#6fd48a;
+    --mono:ui-monospace,"SFMono-Regular",Consolas,"Liberation Mono",monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:15px/1.75 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;}
+  .wrap{max-width:980px;margin:0 auto;padding:48px 28px 80px}
+  header.top{border-bottom:1px solid var(--line);padding-bottom:26px;margin-bottom:34px}
+  .kicker{font:600 12px/1 var(--mono);letter-spacing:.22em;color:var(--accent);text-transform:uppercase}
+  h1{font-size:30px;line-height:1.3;margin:14px 0 8px;font-weight:700}
+  h1 em{font-style:normal;color:var(--accent2)}
+  .sub{color:var(--dim);font-size:14px;margin:0}
+  h2{font-size:20px;margin:44px 0 14px;padding-left:12px;border-left:3px solid var(--accent);font-weight:700}
+  h3{font-size:16px;margin:26px 0 10px;color:var(--accent2);font-weight:600}
+  p{margin:10px 0}
+  ul,ol{margin:10px 0;padding-left:22px}
+  li{margin:6px 0}
+  code{font-family:var(--mono);font-size:12.5px;background:#0a161a;border:1px solid var(--line);
+    border-radius:5px;padding:1px 6px;color:#a8e6dc}
+  .grid{display:grid;gap:14px}
+  .g2{grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}
+  .g3{grid-template-columns:repeat(auto-fit,minmax(190px,1fr))}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px 20px}
+  .card h3{margin-top:0}
+  .stat{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:16px 18px}
+  .stat .v{font:700 26px/1.1 var(--mono);color:var(--accent2)}
+  .stat .l{font-size:12.5px;color:var(--dim);margin-top:6px}
+  table{width:100%;border-collapse:collapse;margin:14px 0;font-size:13.5px}
+  th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--accent2);font-weight:600;background:#0d1a1f;font-size:12.5px;letter-spacing:.04em}
+  tr:hover td{background:#0e1c22}
+  .badge{display:inline-block;font:600 11.5px/1 var(--mono);padding:4px 9px;border-radius:999px;border:1px solid}
+  .b-ok{color:var(--good);border-color:#2c5a3c;background:#12261b}
+  .b-warn{color:var(--warn);border-color:#5c4a22;background:#241d0f}
+  .b-bad{color:var(--bad);border-color:#5c2a2a;background:#261212}
+  .b-info{color:var(--accent);border-color:#26504d;background:#0f2422}
+  .callout{border-left:3px solid var(--accent);background:#0e2124;border-radius:0 10px 10px 0;padding:14px 18px;margin:18px 0}
+  .callout.warn{border-left-color:var(--warn);background:#231d10}
+  .callout.bad{border-left-color:var(--bad);background:#241313}
+  .callout strong{color:var(--accent2)}
+  .callout.warn strong{color:var(--warn)}
+  .callout.bad strong{color:var(--bad)}
+  pre{background:#081216;border:1px solid var(--line);border-radius:10px;padding:14px 16px;overflow-x:auto;
+    font:12.5px/1.65 var(--mono);color:#9fd8cf}
+  .flow{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:14px 0}
+  .node{background:#0f2229;border:1px solid var(--line);border-radius:8px;padding:8px 12px;font-size:13px}
+  .node.hi{border-color:#2f6d66;background:#0f2a2b;color:var(--accent2)}
+  .arrow{color:var(--dim2);font-family:var(--mono)}
+  .bar{height:8px;border-radius:4px;background:#0a161a;overflow:hidden;border:1px solid var(--line);margin-top:6px}
+  .bar > i{display:block;height:100%;background:linear-gradient(90deg,#2f6d66,#4fd1c5)}
+  footer{margin-top:56px;padding-top:20px;border-top:1px solid var(--line);color:var(--dim2);font-size:12.5px}
+  a{color:var(--accent)}
+  .muted{color:var(--dim)}
+  .tag{font:600 11px/1 var(--mono);color:var(--dim);border:1px solid var(--line);border-radius:5px;padding:3px 7px;margin-right:6px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="top">
+  <div class="kicker">Repository Deep-Dive / 2026-09-29</div>
+  <h1>湖南地形<em>全息扫描</em> Web Demo<br>深度分析报告</h1>
+  <p class="sub">仓库 <code>github.com/zerOne4yyt/hunan-terrain-ar-demo</code> · 分析基于本机 ZIP 源码副本（仓库当前不可公开访问）</p>
+</header>
+
+<div class="callout bad">
+  <strong>首要结论：目标仓库当前无法直接拉取。</strong>
+  GitHub API 对该仓库返回 <code>404 Not Found</code>；所属账号 <code>zerOne4yyt</code> 是一个<b>组织账号</b>，公开仓库数为 <b>0</b>。同一组织下的另一个项目 <code>ball-interaction</code>（9 月 21 日仍可克隆）现在同样返回 404 —— 说明该组织的仓库<b>已整体转为私有或删除</b>。
+  本次分析改用本机已存在的两份源码压缩包（<code>Downloads</code> 与微信接收目录中的 <code>hunan-terrain-ar-demo-main.zip</code>，47 MB / 73 个条目）完成。
+</div>
+
+<h2>一、项目定位：它是什么，不是什么</h2>
+<div class="grid g2">
+  <div class="card">
+    <h3>它是什么</h3>
+    <ul>
+      <li>一个<b>纯前端 Three.js（r180）WebGL 三维地形沙盘</b>演示，模拟"站在实体沙盘边缘、通过支架上 Pad 观察"的视角。</li>
+      <li>用<b>真实高程数据</b>（湖南省 DEM）生成地形，叠加"全息扫描"风格的点云与连线动效。</li>
+      <li>11 个真实经纬度地点锚点 + 资料卡展开交互，参考 HoloLens 空间界面语言。</li>
+      <li>含摄像头画面合成预览，用于评估"实景叠加"观感。</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h3>它不是什么</h3>
+    <ul>
+      <li><b>不是真实 AR/MR 应用</b>：没有空间定位、SLAM、环境遮挡或设备位姿跟踪。摄像头仅为屏幕视觉合成。</li>
+      <li><b>不是测绘/工程工具</b>：高程做了垂直夸张，地点为代表性示意锚点，非 GIS 边界。</li>
+      <li><b>不是 HoloLens 原生应用</b>：仅借鉴其设计原则，非官方组件、未认证。</li>
+      <li><b>不是成品展项</b>：README 明确标注"用于视觉与交互效果验证"。</li>
+    </ul>
+  </div>
+</div>
+
+<h2>二、技术栈与工程形态</h2>
+<div class="grid g3">
+  <div class="stat"><div class="v">r180</div><div class="l">Three.js（本地 vendor，可离线）</div></div>
+  <div class="stat"><div class="v">0</div><div class="l">前端构建步骤（原生 ES Module + importmap）</div></div>
+  <div class="stat"><div class="v">5</div><div class="l">前端 JS 模块（app / scan-surface / camera-preview / sites + 3 个 vendor）</div></div>
+  <div class="stat"><div class="v">2</div><div class="l">Python 脚本（DEM 生成 / 素材转换）</div></div>
+  <div class="stat"><div class="v">1</div><div class="l">部署目标（Cloudflare Workers 静态资源）</div></div>
+  <div class="stat"><div class="v">2</div><div class="l">自动化测试（仅 Worker 到期逻辑）</div></div>
+</div>
+
+<h3>运行方式</h3>
+<pre>python3 -m http.server 8767 --bind 127.0.0.1
+# 浏览器打开 http://127.0.0.1:8767/   （必须走本地 HTTP 服务，直接双击 HTML 不行）</pre>
+
+<h3>部署链路</h3>
+<div class="flow">
+  <span class="node">源码</span><span class="arrow">→</span>
+  <span class="node">scripts/build-preview.mjs<br><span class="muted">白名单拷贝到 dist/</span></span><span class="arrow">→</span>
+  <span class="node">node --test worker.test.mjs</span><span class="arrow">→</span>
+  <span class="node hi">wrangler deploy<br><span class="muted">Cloudflare Worker-first</span></span>
+</div>
+<p class="muted">构建脚本只拷贝 <code>index.html / app.js / scan-surface.js / camera-preview.js / sites.js / sites.css / style.css</code> + <code>assets/*.{png,f32,json}</code> + <code>vendor/</code>。研究文档、原始 DEM、历史截图、版本备份、Git 元数据<b>不发布</b>。</p>
+
+<h2>三、数据管线：从瓦片到网页资产</h2>
+<table>
+  <tr><th>环节</th><th>来源 / 参数</th><th>产物</th></tr>
+  <tr><td>高程源</td><td>Mapzen Terrain Tiles（Terrarium）via AWS Open Data，zoom 9，90 张瓦片拼接；底图为 USGS SRTM</td><td>2027 × 2318 px 高程栅格</td></tr>
+  <tr><td>省界裁剪</td><td>geoBoundaries gbOpen CHN ADM1 → Hunan Province（Public Domain）</td><td>省界遮罩</td></tr>
+  <tr><td>投影</td><td>Web Mercator / EPSG:3857</td><td>—</td></tr>
+  <tr><td>清洗</td><td>236 个孤立负高程尖点用邻域中位数修正；省界外置 NaN</td><td><code>湖南高程_米.npy</code></td></tr>
+  <tr><td>素材转换</td><td><code>build_assets.py</code>（NumPy + Pillow）</td><td>网页三件套</td></tr>
+</table>
+
+<h3>网页实际使用的资产</h3>
+<table>
+  <tr><th>文件</th><th>规格</th><th>作用</th></tr>
+  <tr><td><code>terrain-height.f32</code></td><td>256 × 292 = 74,752 个 float32</td><td>顶点高程网格（北→南行序）</td></tr>
+  <tr><td><code>terrain-color.png</code></td><td>1014 × 1159 RGBA</td><td>按高程分级的着色 + 坡度晕渲</td></tr>
+  <tr><td><code>terrain-mask.png</code></td><td>256 × 292 灰度</td><td>省域裁切遮罩（点云/图标均据此裁剪）</td></tr>
+  <tr><td><code>location-icons-atlas.png</code></td><td>1448 × 1086 RGB</td><td>11 个圆形地点图标（4×3 图集）</td></tr>
+  <tr><td><code>location-photos-atlas*.png</code> ×6</td><td>各 1448 × 1086 RGB</td><td>AI 生成概念影像，每地点 6 幅，共 6 组</td></tr>
+</table>
+
+<div class="callout">
+  <strong>实测高程分布（省域内 46,435 个网格点，覆盖率 62.1%）：</strong>
+  最低 11 m，最高 1745 m，均值 342 m，中位数 281 m。地形垂直夸张系数 <code>0.29 / 2076</code>（约 1:7160 缩放后再放大）。
+</div>
+<div class="card">
+  <div style="display:flex;justify-content:space-between"><span>0–50 m 平原</span><span class="muted">9.9%</span></div>
+  <div class="bar"><i style="width:9.9%"></i></div>
+  <div style="display:flex;justify-content:space-between;margin-top:10px"><span>50–200 m</span><span class="muted">28.8%</span></div>
+  <div class="bar"><i style="width:28.8%"></i></div>
+  <div style="display:flex;justify-content:space-between;margin-top:10px"><span>200–500 m 丘陵</span><span class="muted">37.1%</span></div>
+  <div class="bar"><i style="width:37.1%"></i></div>
+  <div style="display:flex;justify-content:space-between;margin-top:10px"><span>500–1000 m</span><span class="muted">20.8%</span></div>
+  <div class="bar"><i style="width:20.8%"></i></div>
+  <div style="display:flex;justify-content:space-between;margin-top:10px"><span>1000 m+ 山地</span><span class="muted">3.3%</span></div>
+  <div class="bar"><i style="width:3.3%"></i></div>
+</div>
+
+<h2>四、代码架构</h2>
+<table>
+  <tr><th>模块</th><th>行数/体积</th><th>职责</th></tr>
+  <tr><td><code>app.js</code></td><td>848 行 / 42 KB</td><td>主控：场景、相机（支架+Pad 视线）、地形网格、地点锚点投影、准心 dwell 状态机、资料卡布局与轮播</td></tr>
+  <tr><td><code>scan-surface.js</code></td><td>149 行 / 8.3 KB</td><td>扫描层：确定性点云 + 局部三角连线，共享 <code>SIGNAL</code> 着色器（扫光/涟漪/聚焦/脉冲）</td></tr>
+  <tr><td><code>camera-preview.js</code></td><td>79 行 / 4.0 KB</td><td>摄像头合成与参考模型显隐（纯视觉，不录制不上传）</td></tr>
+  <tr><td><code>sites.js</code></td><td>105 行 / 9.2 KB</td><td>11 个地点的文案与示意锚点 + 经纬度边界常量</td></tr>
+  <tr><td><code>index.html</code></td><td>95 行</td><td>DOM 骨架、准心 SVG、侧栏控件</td></tr>
+  <tr><td><code>style.css / sites.css</code></td><td>6.2 KB / 13.7 KB</td><td>布局与地点卡动效样式</td></tr>
+  <tr><td><code>build_assets.py</code></td><td>56 行</td><td>DEM → 网页资产转换</td></tr>
+  <tr><td><code>deploy/worker.mjs</code></td><td>29 行</td><td>Cloudflare 到期拦截（fail-closed）</td></tr>
+  <tr><td><code>scripts/build-preview.mjs</code></td><td>18 行</td><td>白名单构建</td></tr>
+</table>
+
+<h3>渲染核心：一次生成，四个着色器共享 uniform</h3>
+<p>地形、点云、连线、地面光标分别使用 <code>MeshStandardMaterial</code> 与多个自定义 <code>ShaderMaterial</code>，但它们<b>共享同一套 uniforms 对象</b>（<code>uTime / uClickPos / uFocusPos / uRippleGain / uEffectGain …</code>），因此扫光、涟漪、聚焦波在四层之间天然同步，无需事件广播。</p>
+
+<h3>关键算法细节（工程质量较高）</h3>
+<div class="grid g2">
+  <div class="card">
+    <h3>坐标映射</h3>
+    <ul>
+      <li><code>geoUv()</code>：经纬度经 <b>Web Mercator</b> 投影到 DEM 归一化 UV，而非线性插值——与数据源投影一致。</li>
+      <li><code>terrainHeightAt()</code>：按 <b>PlaneGeometry 的 (a,b,d)/(b,c,d) 三角对角线</b>插值，而非双线性，保证射线采样与渲染网格完全贴合。</li>
+      <li><code>maskAt()</code>：把省界遮罩画到 canvas 取像素，用于裁掉矩形 DEM 的空角。</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h3>点云 / 连线生成</h3>
+    <ul>
+      <li>固定随机种子 <code>0x1a72c4</code> + LCG → <b>确定性拓扑</b>，刷新不产生新噪声。</li>
+      <li>六方晶格布点（spacing 0.058 m），mask 裁剪后实测 <b>5,635 个点</b>、约 <b>1.1 万条连线</b>。</li>
+      <li>连线只连"近且高差小"的邻点，并<b>沿真实 DEM 三角面每 ~4 mm 重采样</b>，统一抬高 3.5 mm 防深度冲突——无跨谷弦、无悬空中点。</li>
+      <li><code>radiusFrom()</code>：按省域内最远点线样本自动计算选中地点的涟漪传播半径。</li>
+    </ul>
+  </div>
+</div>
+
+<h2>五、交互与动效设计</h2>
+<table>
+  <tr><th>维度</th><th>参数</th></tr>
+  <tr><td>支架（Pad 安装）</td><td>高度 1.2–5.5 m（默认 1.8）、离中心 4.2–9.5 m（默认 4.4）、镜头缩放 1–3.5×（默认 2.0）、沿边 ±2.0 m</td></tr>
+  <tr><td>Pad 视线</td><td>水平 ±18°、垂直 ±12°；拖动 / 方向键；<code>Shift</code> + 方向键精细步进 0.25°</td></tr>
+  <tr><td>地点锚点</td><td>11 处（张家界、岳麓山、崀山、衡山、湘中丘陵、雪峰山、洞庭湖平原、澧阳平原、洞庭湖、沅水、湘江）</td></tr>
+  <tr><td>聚焦 dwell</td><td>进入 18 px 半径开始计时，停留 0.5 s 展开；退出用 36 px 半径 + 160 ms 容错</td></tr>
+  <tr><td>UI 稳定性</td><td>死区 0.7 px，65 ms 帧率无关平滑（<code>1-exp(-dt/τ)</code>）；位移 &gt; 32 px 立即跟随</td></tr>
+  <tr><td>待机涟漪</td><td>准心落在地形上时发起；单圈 6.0 s 消退，最短间隔 6.8 s；视线移动后需静止 0.48 s</td></tr>
+  <tr><td>选中地点涟漪</td><td>按米制距离传播，速度 0.68 m/s、波带 0.40 m；接近最远边缘最后 10% 才开始消退，整圈后留 0.85 s</td></tr>
+  <tr><td>资料卡</td><td>四角（左上/右上/左下/右下）从中心贝塞尔曲线端点长出；照片每 6 s 轮播，右下错开 3 s；介绍与关键读数自动翻页</td></tr>
+  <tr><td>防抖细节</td><td>卡片根节点与 SVG 曲线末端使用<b>同一坐标</b>，避免 transform 顺序造成偏移</td></tr>
+</table>
+
+<h2>六、版本演进（R03 → R06.1）</h2>
+<table>
+  <tr><th>版本</th><th>主要变化</th></tr>
+  <tr><td>R03</td><td>基础连续网格版（保留于 <code>revisions/r03-before-polish/</code>）</td></tr>
+  <tr><td>R04</td><td>独立扫描模块 <code>scan-surface.js</code>；点线拓扑；<code>?review=scan</code> 审查页；资料连线改单段三次贝塞尔</td></tr>
+  <tr><td>R05</td><td>定位与环境反馈：光感 1.15→1.75；按高程带柔化聚焦范围；地面定位微光 + 引导线</td></tr>
+  <tr><td>R06</td><td>准心节奏涟漪取代随机扫光；地面定位标记加强；主扫描光感 2.4</td></tr>
+  <tr><td>R06.1</td><td>选中地点改<b>全图涟漪</b>（米制距离、自动半径、亮度系数 0.26→0.48）</td></tr>
+</table>
+<p class="muted">另存有 <code>app-v1-grid.js</code>（连续网格版）与 <code>app-v2-points.js</code>（仅点云+极弱网格线版）作为历史对照。</p>
+
+<h2>七、部署与"10 天到期"机制</h2>
+<div class="callout">
+  <strong>线上测试地址当前仍可访问：</strong> <code>https://hunan-terrain-ar-preview.yytsky1.workers.dev/</code> 返回 200。
+  截止时间硬编码在 <code>wrangler.json</code> 的 <code>PREVIEW_EXPIRES_AT = 2026-10-08T10:52:23Z</code>（北京时间 10-08 18:52）。
+</div>
+<ul>
+  <li><code>assets.run_worker_first: true</code>：所有请求先过 Worker，用<b>服务器时间</b>判断到期，改访客本机时钟无法绕过。</li>
+  <li>到期后首页与所有素材直链统一返回 <b>HTTP 410</b>；到期前也用 <code>Cache-Control: no-store</code> 防浏览器持久缓存。</li>
+  <li>安全头：<code>X-Robots-Tag: noindex</code>、<code>Permissions-Policy: camera=(self), microphone=(), geolocation=()</code>、<code>nosniff</code>。</li>
+  <li>Worker 测试覆盖：到期前放行 + 到期拦截首页/脚本/素材直链 + 非法截止时间 fail-closed。</li>
+  <li class="muted">机制边界（文档已诚实说明）：到期<b>不</b>删除私密仓库与 Cloudflare 配置；已载入内存的画面或他人已保存的副本不受远程撤回控制。</li>
+</ul>
+
+<h2>八、工程亮点</h2>
+<ul>
+  <li><b>诚实的技术边界标注</b>：AR 免责红字常驻界面，<code>AR-INTEGRATION.md</code> 给出接入清单（统一世界锚点、One Euro + slerp 滤波、短时丢失冻结/持续丢失淡出、按真实设备重标阈值）。这在演示类项目里很少见。</li>
+  <li><b>确定性可复现</b>：固定随机种子，刷新与重载不产生新噪声；DEM→资产转换脚本可重跑。</li>
+  <li><b>几何严谨</b>：连线沿真实 DEM 三角面重采样、按 PlaneGeometry 对角线插值，视觉与物理一致。</li>
+  <li><b>零构建依赖</b>：Three.js 本地 vendor + importmap，可完全离线运行。</li>
+  <li><b>发布隔离</b>：白名单构建，研究资料与原始数据不进公开产物。</li>
+  <li><b>隐私友好</b>：摄像头仅本地合成，不请求麦克风、不录制、不上传。</li>
+</ul>
+
+<h2>九、风险与待办</h2>
+<table>
+  <tr><th>级别</th><th>问题</th><th>说明 / 建议</th></tr>
+  <tr><td><span class="badge b-bad">高</span></td><td>仓库不可公开访问</td><td>组织 <code>zerOne4yyt</code> 公开仓库数为 0，同组织 <code>ball-interaction</code> 也已 404。协作者无法 clone。→ 需确认仓库是否被误转私有，或提供访问凭据 / 重新公开。</td></tr>
+  <tr><td><span class="badge b-warn">中</span></td><td>地点文案未经科学审校</td><td>README 与 DESIGN-NOTES 均声明"按用户草稿录入，尚未逐句科学审校"，部分数值（如洞庭湖 2625 km²、沅水 1033 km）需核。</td></tr>
+  <tr><td><span class="badge b-warn">中</span></td><td>AI 概念影像被明示"不能作为实景照片"</td><td>6 组图集为 ImageGen 生成，正式展项需替换为有授权的真实素材。</td></tr>
+  <tr><td><span class="badge b-warn">中</span></td><td>测试覆盖薄</td><td>仅 <code>worker.test.mjs</code>（2 例）。点云生成、geoUv、dwell 状态机等核心逻辑无自动化测试；README 提到用射线抽样人工核对了 120 个连线点。</td></tr>
+  <tr><td><span class="badge b-warn">中</span></td><td>首屏资源偏大</td><td><code>assets/</code> 共 23 MB，其中 7 张 1448×1086 PNG 约 20 MB。移动端 / 弱网首屏压力大。→ 建议 WebP/AVIF + 按需懒加载图集。</td></tr>
+  <tr><td><span class="badge b-info">低</span></td><td>测试地址无鉴权</td><td>持链接即可访问（文档已说明）。到期机制只挡新请求，不挡已保存副本。</td></tr>
+  <tr><td><span class="badge b-info">低</span></td><td>地点锚点为示意点</td><td>崀山因景区中心落在省界遮罩外，改用新宁侧代表点；标注不用于精确定位（文档已声明）。</td></tr>
+  <tr><td><span class="badge b-info">低</span></td><td>无 LICENSE 文件</td><td>仓库未声明开源许可，对外复用前需明确授权。</td></tr>
+</table>
+
+<h2>十、总体评价与建议</h2>
+<div class="card">
+  <p><b>结论：</b>这是一个<b>完成度与工程自律都明显高于一般"演示 Demo"</b>的前端项目。它在纯浏览器环境里用真实 DEM 做出了贴近 HoloLens 空间扫描语言的视觉，且对"这是模拟、不是真 AR"保持了罕见的诚实标注；代码里对投影、三角插值、深度冲突、防抖阈值等细节处理得很扎实。</p>
+  <p><b>当前最大障碍不是技术，而是可访问性：</b>仓库已不可公开拉取，需要先解决访问权限，否则协作与交接无法进行。</p>
+  <p><b>建议优先级：</b></p>
+  <ol>
+    <li><b>P0</b> — 确认并恢复仓库访问权限（公开或提供凭据）。</li>
+    <li><b>P1</b> — 建立真实 AR 跟踪验证路线（文档已给清单：统一锚点 + 自适应滤波 + 丢失策略 + 现场验收用例），这是从"演示"到"展项"的关键一步。</li>
+    <li><b>P1</b> — 地点文案科学审校 + 概念影像替换为授权实景素材。</li>
+    <li><b>P2</b> — 图集转 WebP/AVIF 并懒加载，压缩首屏体积。</li>
+    <li><b>P2</b> — 为 <code>geoUv</code> / <code>terrainHeightAt</code> / 点云拓扑补单元测试（可用 Node 直接跑纯函数部分）。</li>
+    <li><b>P3</b> — 补充 LICENSE，明确复用边界。</li>
+  </ol>
+</div>
+
+<footer>
+  本报告基于本机源码副本静态分析 + GitHub API 核验 + 线上地址探测 + 数据实测统计生成。<br>
+  分析对象：<code>hunan-terrain-ar-demo-main</code>（73 个条目，解压约 62 MB） · Three.js r180 · 生成日期 2026-09-29
+</footer>
+
+</div>
+</body>
+</html>

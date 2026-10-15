@@ -1,0 +1,496 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>修订方案 · 固定支架 + 仅旋转 · 安卓 Pad</title>
+<style>
+  :root{
+    --bg:#0b1418; --panel:#101e24; --panel2:#0d1a1f; --line:#1d333c;
+    --ink:#dceef0; --dim:#8fadb5; --dim2:#6d8b93;
+    --accent:#4fd1c5; --accent2:#7ee0d2; --warn:#f0b357; --bad:#ef6b6b; --good:#6fd48a;
+    --mono:ui-monospace,"SFMono-Regular",Consolas,"Liberation Mono",monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:15px/1.75 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;}
+  .wrap{max-width:1000px;margin:0 auto;padding:48px 28px 80px}
+  header.top{border-bottom:1px solid var(--line);padding-bottom:26px;margin-bottom:34px}
+  .kicker{font:600 12px/1 var(--mono);letter-spacing:.22em;color:var(--accent);text-transform:uppercase}
+  h1{font-size:29px;line-height:1.32;margin:14px 0 8px;font-weight:700}
+  h1 em{font-style:normal;color:var(--accent2)}
+  .sub{color:var(--dim);font-size:14px;margin:0}
+  h2{font-size:20px;margin:48px 0 14px;padding-left:12px;border-left:3px solid var(--accent);font-weight:700}
+  h3{font-size:16px;margin:28px 0 10px;color:var(--accent2);font-weight:600}
+  h4{font-size:14.5px;margin:20px 0 8px;font-weight:600}
+  p{margin:10px 0}
+  ul,ol{margin:10px 0;padding-left:22px}
+  li{margin:6px 0}
+  code{font-family:var(--mono);font-size:12.5px;background:#0a161a;border:1px solid var(--line);
+    border-radius:5px;padding:1px 6px;color:#a8e6dc}
+  .grid{display:grid;gap:14px}
+  .g2{grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
+  .g3{grid-template-columns:repeat(auto-fit,minmax(200px,1fr))}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px 20px}
+  .card h3,.card h4{margin-top:0}
+  .stat{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:16px 18px}
+  .stat .v{font:700 23px/1.15 var(--mono);color:var(--accent2)}
+  .stat .l{font-size:12.5px;color:var(--dim);margin-top:6px}
+  table{width:100%;border-collapse:collapse;margin:14px 0;font-size:13.5px}
+  th,td{text-align:left;padding:9px 11px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--accent2);font-weight:600;background:#0d1a1f;font-size:12.5px;letter-spacing:.04em}
+  tr:hover td{background:#0e1c22}
+  .badge{display:inline-block;font:600 11.5px/1 var(--mono);padding:4px 9px;border-radius:999px;border:1px solid;white-space:nowrap}
+  .b-ok{color:var(--good);border-color:#2c5a3c;background:#12261b}
+  .b-warn{color:var(--warn);border-color:#5c4a22;background:#241d0f}
+  .b-bad{color:var(--bad);border-color:#5c2a2a;background:#261212}
+  .b-info{color:var(--accent);border-color:#26504d;background:#0f2422}
+  .b-rec{color:#0b1418;border-color:var(--accent);background:var(--accent)}
+  .callout{border-left:3px solid var(--accent);background:#0e2124;border-radius:0 10px 10px 0;padding:14px 18px;margin:18px 0}
+  .callout.warn{border-left-color:var(--warn);background:#231d10}
+  .callout.bad{border-left-color:var(--bad);background:#241313}
+  .callout.good{border-left-color:var(--good);background:#12241a}
+  .callout strong{color:var(--accent2)}
+  .callout.warn strong{color:var(--warn)}
+  .callout.bad strong{color:var(--bad)}
+  .callout.good strong{color:var(--good)}
+  pre{background:#081216;border:1px solid var(--line);border-radius:10px;padding:14px 16px;overflow-x:auto;
+    font:12.5px/1.7 var(--mono);color:#9fd8cf}
+  .flow{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:14px 0}
+  .node{background:#0f2229;border:1px solid var(--line);border-radius:8px;padding:8px 12px;font-size:13px}
+  .node.hi{border-color:#2f6d66;background:#0f2a2b;color:var(--accent2)}
+  .arrow{color:var(--dim2);font-family:var(--mono)}
+  .muted{color:var(--dim)}
+  footer{margin-top:56px;padding-top:20px;border-top:1px solid var(--line);color:var(--dim2);font-size:12.5px}
+  .toc{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:16px 22px;margin:24px 0}
+  .toc ol{margin:8px 0;columns:2;column-gap:32px}
+  .toc a{color:var(--dim);text-decoration:none}
+  .toc a:hover{color:var(--accent)}
+  .tier{display:flex;gap:14px;margin:16px 0;align-items:stretch}
+  .tier .n{flex:0 0 54px;border-radius:10px;background:#0f2a2b;border:1px solid #2f6d66;
+    color:var(--accent2);font:700 15px/1 var(--mono);display:flex;align-items:center;justify-content:center;text-align:center}
+  .tier .b{flex:1;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 18px}
+  .tier .b h4{margin:0 0 6px}
+  .tier .b p{margin:4px 0;font-size:14px}
+  .strike{color:var(--dim2);text-decoration:line-through}
+  .vs{display:grid;grid-template-columns:1fr auto 1fr;gap:10px;align-items:center;margin:14px 0;font-size:13.5px}
+  .vs .mid{color:var(--dim2);font-family:var(--mono);font-size:18px}
+  .box{border:1px solid var(--line);border-radius:9px;padding:10px 14px;background:var(--panel2)}
+  .box.old{border-color:#3a2a2a;background:#1a1212}
+  .box.new{border-color:#26504d;background:#0f2422}
+  .box b{display:block;font-size:12px;letter-spacing:.06em;margin-bottom:6px;font-family:var(--mono)}
+  .box.old b{color:var(--bad)}
+  .box.new b{color:var(--good)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="top">
+  <div class="kicker">Revised Plan / 2026-09-29 · v2</div>
+  <h1>固定支架 · 仅旋转 · 安卓 Pad<br><em>重新梳理的 AR 方案</em></h1>
+  <p class="sub">约束大幅收窄后，问题从「六自由度定位」降为「两自由度角度测量」——复杂度下降约一个数量级</p>
+</header>
+
+<div class="callout good">
+  <strong>结论速览：</strong>Pad 位置固定、只能旋转，意味着<b>不需要 SLAM、不需要解算位置、不需要重定位、不需要标记位姿真值</b>。唯一未知量是 <b>yaw 和 pitch 两个角度</b>。位置直接写死成标定常量，旋转用传感器测。<br><br>
+  <b>推荐落地顺序：</b>① 先用 Pad 自带姿态传感器跑通（零成本、当天可验证）→ ② 若漂移不可接受，在支架旋转轴上加两个磁编码器走 USB HID（几十元、精度提升一个数量级）→ ③ 若还需要绝对参考，再叠加标记校正。
+</div>
+
+<div class="toc">
+  <strong style="color:var(--accent2);font-size:14px">目录</strong>
+  <ol>
+    <li><a href="#s1">约束变化带来的简化</a></li>
+    <li><a href="#s2">精度需求推算</a></li>
+    <li><a href="#s3">旋转测量的三个实现</a></li>
+    <li><a href="#s4">"假 AR" 的四个档位</a></li>
+    <li><a href="#s5">一次性安装校准</a></li>
+    <li><a href="#s6">稳定性处理</a></li>
+    <li><a href="#s7">代码改动清单</a></li>
+    <li><a href="#s8">实施步骤与验收</a></li>
+  </ol>
+</div>
+
+<h2 id="s1">一、约束变化带来的简化</h2>
+
+<table>
+  <tr><th>维度</th><th>上一版假设（手持自由移动）</th><th>本版实际（固定支架 + 仅旋转）</th><th>简化效果</th></tr>
+  <tr>
+    <td>自由度</td>
+    <td>6 DOF（位置 + 姿态）</td>
+    <td><b>2 DOF</b>（yaw + pitch）</td>
+    <td><span class="badge b-ok">求解量减到 1/3</span></td>
+  </tr>
+  <tr>
+    <td>位置来源</td>
+    <td>每帧解算，会漂移</td>
+    <td><b>安装时量一次，写进常量</b></td>
+    <td><span class="badge b-ok">彻底消除位置漂移</span></td>
+  </tr>
+  <tr>
+    <td>标记的用途</td>
+    <td>解算完整位姿（需要精确的 markers.json）</td>
+    <td>最多只做<b>角度校正</b>，甚至完全不用</td>
+    <td><span class="badge b-ok">不需要测标记位姿</span></td>
+  </tr>
+  <tr>
+    <td>旋转范围</td>
+    <td>任意</td>
+    <td><b>±18° / ±12°</b>（小范围）</td>
+    <td><span class="badge b-ok">漂移累积可控</span></td>
+  </tr>
+  <tr>
+    <td>重定位</td>
+    <td>丢失后需要重新锁定</td>
+    <td>位置永远已知，<b>不存在丢失问题</b></td>
+    <td><span class="badge b-ok">去掉整个状态机</span></td>
+  </tr>
+  <tr>
+    <td>遮挡</td>
+    <td>需要配准后做深度遮挡</td>
+    <td>位置固定 → 遮挡关系可预计算</td>
+    <td><span class="badge b-ok">可选，非必需</span></td>
+  </tr>
+</table>
+
+<div class="callout">
+  <strong>唯一需要新增的物理前提：</strong>Pad 装在支架上的<b>姿态</b>（安装倾角、横竖屏）必须固定不动。安装后调好就不再变——这个安装姿态会被一次性标定吸收进常量里。
+</div>
+
+<h2 id="s2">二、精度需求推算（决定选哪个方案）</h2>
+
+<p>取安卓 Pad 后置摄像头典型水平视场 <b>65°</b>、采集宽度 <b>1280 px</b>：</p>
+
+<div class="grid g3">
+  <div class="stat"><div class="v">19.7 px</div><div class="l">1° 角度误差折算到屏幕</div></div>
+  <div class="stat"><div class="v">0.25°</div><div class="l">要保证贴合误差 &lt; 5 px 所需精度</div></div>
+  <div class="stat"><div class="v">27.7%</div><div class="l">±18° 旋转占屏幕宽度比例</div></div>
+</div>
+
+<p>这个推算给出了清晰的选型标尺——<b>贴合误差 5 px 以内需要 0.25° 的角度精度</b>：</p>
+
+<table>
+  <tr><th>测量方式</th><th>典型精度</th><th>折算屏幕误差</th><th>是否达标</th></tr>
+  <tr><td>12 位磁编码器（AS5600）</td><td>0.09°</td><td><b>1.7 px</b></td><td><span class="badge b-ok">优秀</span></td></tr>
+  <tr><td>视觉标记 PnP</td><td>0.15°</td><td><b>3.0 px</b></td><td><span class="badge b-ok">优秀</span></td></tr>
+  <tr><td>设备陀螺仪（短时）</td><td>0.20°</td><td><b>3.9 px</b></td><td><span class="badge b-ok">达标</span></td></tr>
+  <tr><td>精密电位器</td><td>0.30°</td><td><b>5.9 px</b></td><td><span class="badge b-warn">临界</span></td></tr>
+  <tr><td>设备加速度计（pitch 绝对）</td><td>0.50°</td><td><b>9.8 px</b></td><td><span class="badge b-warn">勉强</span></td></tr>
+  <tr><td>USB HID 手柄电位器</td><td>0.50°</td><td><b>9.8 px</b></td><td><span class="badge b-warn">勉强</span></td></tr>
+  <tr><td>磁力计定北（室内）</td><td>2.00°</td><td><b>39.4 px</b></td><td><span class="badge b-bad">不可用</span></td></tr>
+</table>
+
+<div class="callout warn">
+  <strong>关键结论：</strong>磁力计在室内展馆<b>不可靠</b>（钢结构、电机、灯光镇流器都会干扰），39 px 的误差肉眼非常明显。<b>不要指望「设备绝对朝向」能直接用来定 yaw。</b>
+</div>
+
+<h2 id="s3">三、旋转测量的三个实现</h2>
+
+<div class="tier">
+  <div class="n">S1</div>
+  <div class="b">
+    <h4>Pad 自带姿态传感器 <span class="badge b-rec">先做这个</span> <span class="badge b-info">零成本</span></h4>
+    <p><b>做法：</b>用浏览器 <code>deviceorientation</code> 事件读设备姿态。安卓 Chrome 无需权限弹窗（iOS 才需要 <code>requestPermission()</code>）。</p>
+    <p><b>可用部分：</b><code>beta</code>（俯仰）来自加速度计测重力方向，<b>是绝对值且稳定</b>，直接可用于 pitch。</p>
+    <p><b>问题部分：</b><code>alpha</code>（偏航）在室内磁环境下不可靠；若退回纯陀螺积分则会缓慢漂移。</p>
+    <p><b>应对：</b>① 用「零点复位」按钮让用户手动归中；② 只在单次会话内使用，每次开机重新归零；③ 若展馆磁环境干净（无大型钢构/电机），实测后可能直接可用。</p>
+    <p class="muted"><b>工期：</b>1–2 天可跑通并实测漂移量。<b>建议作为第一步验证手段</b>——先量出真实漂移，再决定要不要上硬件。</p>
+  </div>
+</div>
+
+<div class="tier">
+  <div class="n">S2</div>
+  <div class="b">
+    <h4>支架旋转轴编码器 <span class="badge b-rec">最稳</span> <span class="badge b-info">需少量硬件</span></h4>
+    <p><b>推荐实现：USB HID 手柄方案。</b>支架的两个旋转轴各装一个 <b>AS5600 磁编码器</b>（12 位，0.09°）或精密电位器，接到一块 <b>RP2040 / Pro Micro</b>，枚举成一个<b>双轴 USB 游戏手柄</b>，通过 OTG 接安卓 Pad，浏览器直接用 <b>Gamepad API</b> 读取。</p>
+    <p><b>为什么选 USB HID 而不是蓝牙：</b>免配对、免电池、免驱动、延迟低、插上就能用。展项现场最怕的就是"蓝牙连不上"。</p>
+    <p><b>精度：</b>AS5600 → 1.7 px；电位器 → 5.9 px。建议直接上磁编码器，差价很小。</p>
+    <p><b>优势：</b>零漂移、零延迟、不受光照/遮挡/磁干扰影响，是固定展项里<b>最省心的方案</b>。装上之后基本不需要维护。</p>
+    <p class="muted"><b>工期：</b>硬件 3–5 天（含支架改造）+ 软件 1 天。</p>
+  </div>
+</div>
+
+<div class="tier">
+  <div class="n">S3</div>
+  <div class="b">
+    <h4>标记辅助校正 <span class="badge b-info">可选增强</span></h4>
+    <p><b>做法：</b>沙盘边框贴 1–2 个 AprilTag，摄像头低频（如 2 Hz）检测一次，解算出的角度用来<b>校正</b> S1/S2 的漂移。</p>
+    <p><b>因为位置已知，</b>这里不需要完整的 PnP——只需从一个标记的<b>图像位置</b>反推偏航/俯仰，未知量只有 2 个，非常鲁棒。</p>
+    <p><b>用途：</b>如果走 S1（陀螺仪）路线且实测漂移明显，加这个就能获得绝对参考；如果走 S2（编码器）路线，<b>完全不需要</b>。</p>
+    <p class="muted"><b>工期：</b>3–4 天（标记检测 WASM 集成 + 角度解算）。</p>
+  </div>
+</div>
+
+<h3>选型决策</h3>
+<div class="flow">
+  <span class="node hi">先做 S1</span><span class="arrow">→</span>
+  <span class="node">实测漂移</span><span class="arrow">→</span>
+  <span class="node">漂移 &lt; 0.3°/分钟？</span><span class="arrow">→</span>
+  <span class="node" style="border-color:#2c5a3c;color:var(--good)">是：就用 S1，收工</span>
+</div>
+<div class="flow">
+  <span class="node" style="border-color:#2c5a3c;color:var(--good)">否</span><span class="arrow">→</span>
+  <span class="node hi">上 S2 编码器</span><span class="arrow">→</span>
+  <span class="node">（S3 一般可跳过）</span>
+</div>
+
+<div class="callout good">
+  <strong>我的建议：</strong>直接按 <b>S2 编码器</b>设计，但用 <b>S1 做过渡</b>。理由：支架既然是为这个展项定制的，加装编码器的边际成本很低，而它能一次性消除漂移、光照、遮挡、磁干扰四类问题——这些都是展项长期运行中最容易翻车的点。S1 则用来在硬件到货前先跑通整条软件链路。
+</div>
+
+<h2 id="s4">四、"假 AR" 的四个档位</h2>
+
+<p>你说「甚至可以是假 AR」——这里给出从真到假的四档，每档都写清代价。建议<b>做到档位 B</b>，有余力再上 A。</p>
+
+<table>
+  <tr><th>档位</th><th>做法</th><th>需要的校准</th><th>效果</th><th>代价</th></tr>
+  <tr>
+    <td><b>A · 真透传</b></td>
+    <td>摄像头画面做背景 + 全息内容贴合实体沙盘</td>
+    <td>FOV 校准 + 位置校准 + 高精度旋转（≤0.25°）</td>
+    <td>最像真 AR，山体后的点被正确遮挡</td>
+    <td><span class="badge b-warn">高</span>需标定相机内参</td>
+  </tr>
+  <tr>
+    <td><b>B · 半透传</b> <span class="badge b-rec">推荐</span></td>
+    <td>摄像头画面做背景，内容按<b>大尺度</b>贴合（容忍 1–3° 误差）</td>
+    <td>FOV 粗调 + 位置校准 + 中精度旋转</td>
+    <td>观感接近 A，误差在可接受范围</td>
+    <td><span class="badge b-info">中</span>FOV 用滑杆现场对位即可</td>
+  </tr>
+  <tr>
+    <td><b>C · 纯虚拟</b></td>
+    <td>不做摄像头透传，直接显示虚拟沙盘，视角随旋转联动</td>
+    <td>只需旋转测量，<b>FOV 可以随便定</b></td>
+    <td>用户看到"会转的三维沙盘"，但知道那是屏幕内容</td>
+    <td><span class="badge b-ok">低</span>无需内参标定</td>
+  </tr>
+  <tr>
+    <td><b>D · 屏幕锁定</b></td>
+    <td>不测旋转，内容固定屏幕位置</td>
+    <td>无</td>
+    <td>旋转 Pad 时内容不跟随，<b>AR 感完全消失</b></td>
+    <td><span class="badge b-ok">最低</span>但不推荐</td>
+  </tr>
+</table>
+
+<div class="callout warn">
+  <strong>为什么 D 档不推荐：</strong>±18° 旋转会让内容相对实体沙盘滑动近 <b>28% 屏幕宽度</b>。这个量级肉眼极其明显，用户会立刻感觉"内容浮在屏幕上，没有贴在沙盘上"，反而比不做 AR 更差。
+</div>
+
+<div class="callout">
+  <strong>档位 B 的 FOV 怎么定（不用内参标定）：</strong>做一个「对位校准」模式——屏幕上叠加虚拟沙盘的四角轮廓，操作员拖动 FOV 滑杆，直到轮廓与透过摄像头看到的实体沙盘边缘重合。存进配置，一次搞定。这是展项行业最常用的做法，比实验室标定更实用。
+</div>
+
+<h2 id="s5">五、一次性安装校准</h2>
+
+<p>安装时做一次，之后写入配置文件。这是整个方案里唯一需要人工介入的环节。</p>
+
+<table>
+  <tr><th>#</th><th>校准项</th><th>做法</th><th>产物</th></tr>
+  <tr>
+    <td>1</td><td><b>支架位置</b></td>
+    <td>实测支架相对沙盘中心的：安装高度、离中心距离、沿边左右偏移</td>
+    <td><code>{ height, distance, lateral }</code></td>
+  </tr>
+  <tr>
+    <td>2</td><td><b>零点姿态</b></td>
+    <td>把 Pad 转到名义视角（正对沙盘中心），记录此刻的传感器读数作为零点</td>
+    <td><code>{ zeroYaw, zeroPitch }</code></td>
+  </tr>
+  <tr>
+    <td>3</td><td><b>轴向与符号</b></td>
+    <td>左右各转一次、上下各转一次，确认传感器轴与相机轴的对应关系和正负方向</td>
+    <td><code>{ axisMap, signYaw, signPitch }</code></td>
+  </tr>
+  <tr>
+    <td>4</td><td><b>屏幕方向补偿</b></td>
+    <td>Pad 是横屏还是竖屏、屏幕旋转 0/90/180/270°，需在角度映射里补偿</td>
+    <td><code>{ screenOrientation }</code></td>
+  </tr>
+  <tr>
+    <td>5</td><td><b>FOV 对位</b>（仅档位 A/B）</td>
+    <td>叠加虚拟沙盘轮廓，调 FOV 直到与实体沙盘边缘重合</td>
+    <td><code>{ fov }</code></td>
+  </tr>
+  <tr>
+    <td>6</td><td><b>旋转限位</b></td>
+    <td>实测支架机械限位角度，替换 Demo 里的 ±18°/±12°</td>
+    <td><code>{ yawLimit, pitchLimit }</code></td>
+  </tr>
+</table>
+
+<div class="callout warn">
+  <strong>容易漏掉的一项：屏幕方向补偿。</strong>安卓 Pad 横屏时，设备坐标系会整体旋转 90°。如果不补偿，用户左右转 Pad 会变成画面上下动。这是这类项目最常见的翻车点之一，务必在步骤 3/4 里显式验证。
+</div>
+
+<h2 id="s6">六、稳定性处理</h2>
+
+<p>因为位置固定，稳定性问题只剩「旋转输出要不要滤波」这一件事。</p>
+
+<table>
+  <tr><th>问题</th><th>处理</th><th>参数建议</th></tr>
+  <tr>
+    <td>传感器噪声抖动</td>
+    <td>One Euro 滤波（角度是标量，比四元数简单得多）</td>
+    <td><code>minCutoff ≈ 1.0 Hz</code>、<code>beta ≈ 0.01</code></td>
+  </tr>
+  <tr>
+    <td>静止时亚像素抖动</td>
+    <td>角度死区：变化小于阈值时冻结输出</td>
+    <td>&lt; <b>0.05°</b> 时不动（约 1 px）</td>
+  </tr>
+  <tr>
+    <td>缓慢漂移（仅 S1 路线）</td>
+    <td>① 零点复位按钮；② 开机自动归零；③ 标记低频校正（S3）</td>
+    <td>复位按钮放在不显眼处，操作员可用</td>
+  </tr>
+  <tr>
+    <td>传感器断连（USB 被拔）</td>
+    <td>冻结最后角度 + 状态角标提示；恢复后平滑过渡</td>
+    <td>过渡 0.3 s，避免瞬移</td>
+  </tr>
+</table>
+
+<div class="callout good">
+  <strong>好消息：</strong>因为<b>位置永远固定且已知</b>，上一版方案里的整套「丢失恢复状态机」（正常/降级/短时丢失/持续丢失/重定位）可以<b>全部删掉</b>。只剩一个「角度输入异常」的简单兜底。
+</div>
+
+<h3>相机设置建议</h3>
+<ul>
+  <li><b>镜头缩放必须固定。</b>Demo 里的 1–3.5× 数字变焦会破坏 FOV 一致性，走档位 A/B 时必须锁定为 1×，或直接移除该控件。</li>
+  <li><b>摄像头分辨率固定。</b>让 <code>getUserMedia</code> 请求固定的 1280×720，并在校准时用同一分辨率，避免浏览器自适应切换导致 FOV 跳变。</li>
+  <li><b>后置摄像头。</b>Demo 已用 <code>facingMode: 'environment'</code>，保持即可。</li>
+</ul>
+
+<h2 id="s7">七、代码改动清单</h2>
+
+<p>现有代码里，相机是由 <code>settings</code> 里的五个数驱动的。改动就是把这五个数换掉三个来源：</p>
+
+<div class="vs">
+  <div class="box old">
+    <b>现状</b>
+    <code>settings.height / distance / lateral</code><br>
+    <span class="muted">用户拖滑杆</span><br><br>
+    <code>settings.yaw / pitch</code><br>
+    <span class="muted">用户拖画面 / 方向键</span>
+  </div>
+  <div class="mid">→</div>
+  <div class="box new">
+    <b>改后</b>
+    <code>CALIB.height / distance / lateral</code><br>
+    <span class="muted">安装时写入的常量</span><br><br>
+    <code>pose.yaw / pitch</code><br>
+    <span class="muted">传感器实时读数 − 零点</span>
+  </div>
+</div>
+
+<table>
+  <tr><th>文件</th><th>改动</th><th>工作量</th></tr>
+  <tr>
+    <td><code>pose-source.js</code> <span class="badge b-rec">新增</span></td>
+    <td>统一的角度来源接口。内部可切换 S1（deviceorientation）/ S2（Gamepad API）/ S3（标记）。对外只吐 <code>{yaw, pitch, valid}</code></td>
+    <td><span class="badge b-info">中</span></td>
+  </tr>
+  <tr>
+    <td><code>calibration.json</code> <span class="badge b-rec">新增</span></td>
+    <td>存放第 5 节的六项校准结果</td>
+    <td><span class="badge b-ok">小</span></td>
+  </tr>
+  <tr>
+    <td><code>app.js</code> · <code>updateCamera()</code></td>
+    <td>位置改用 <code>CALIB</code> 常量；yaw/pitch 改用 <code>pose</code> 读数（替换原 <code>settings</code> 来源）</td>
+    <td><span class="badge b-ok">小</span></td>
+  </tr>
+  <tr>
+    <td><code>app.js</code> · <code>updateLens()</code></td>
+    <td>FOV 改用校准值常量，移除 zoom 逻辑</td>
+    <td><span class="badge b-ok">小</span></td>
+  </tr>
+  <tr>
+    <td><code>app.js</code> · <code>setupControls()</code></td>
+    <td>支架滑杆 / 拖动改视线 / 滚轮 / 方向键 <b>全部移入隐藏的调试面板</b>，默认不显示</td>
+    <td><span class="badge b-ok">小</span></td>
+  </tr>
+  <tr>
+    <td><code>app.js</code> · 新增校准模式</td>
+    <td><code>?calibrate=1</code>：显示零点捕获、轴向确认、FOV 对位轮廓，结果导出 JSON</td>
+    <td><span class="badge b-info">中</span></td>
+  </tr>
+  <tr>
+    <td><code>app.js</code> · <code>onReferenceChange()</code></td>
+    <td>档位 A 才需要：<code>terrain.material.colorWrite = false</code> 保留深度做遮挡。档位 B/C 可跳过</td>
+    <td><span class="badge b-ok">小</span></td>
+  </tr>
+  <tr>
+    <td><code>camera-preview.js</code></td>
+    <td>基本不动。若走档位 C 则不再需要</td>
+    <td><span class="badge b-ok">无</span></td>
+  </tr>
+  <tr>
+    <td><code>scan-surface.js</code></td>
+    <td><b>完全不动</b></td>
+    <td><span class="badge b-ok">无</span></td>
+  </tr>
+  <tr>
+    <td><code>updateSites()</code> / <code>layoutStory()</code></td>
+    <td><b>完全不动</b>——已是从世界坐标投影，相机一换自动跟随</td>
+    <td><span class="badge b-ok">无</span></td>
+  </tr>
+  <tr>
+    <td><code>wrangler.json</code></td>
+    <td>正式部署去掉 10 天到期拦截</td>
+    <td><span class="badge b-ok">小</span></td>
+  </tr>
+</table>
+
+<div class="callout good">
+  <strong>改动量的好消息：</strong>渲染层（点云、着色器、地点数据、卡片布局）<b>一行都不用改</b>。真正的工作量集中在一个新文件 <code>pose-source.js</code> 加一次校准流程上。
+</div>
+
+<h2 id="s8">八、实施步骤与验收</h2>
+
+<h3>建议顺序（约 2–3 周可到档位 B）</h3>
+<ol>
+  <li><b>第 1 步（1 天）· 锁定常量。</b>实测支架的 height / distance / lateral，写死进配置，先把三个滑杆废掉——这一步不依赖任何传感器，立刻能验证"固定位置"是否正确。</li>
+  <li><b>第 2 步（2 天）· S1 跑通。</b>接 <code>deviceorientation</code>，做零点校准和轴向映射，观察旋转是否跟随。<b>同步实测漂移量。</b></li>
+  <li><b>第 3 步（1 天）· 判定。</b>若漂移 &lt; 0.3°/分钟 → 直接用 S1。否则下单编码器。</li>
+  <li><b>第 4 步（1 天）· 档位 C 验证。</b>先做纯虚拟版本，确认旋转联动流畅、UI 稳定。<b>这一步就能回答"假 AR 够不够用"。</b></li>
+  <li><b>第 5 步（2 天）· 上透传。</b>接回摄像头，做 FOV 对位校准，进入档位 B。</li>
+  <li><b>第 6 步（3–5 天，可选）· S2 编码器。</b>硬件到货后替换角度来源。因为接口统一，<b>软件侧只换一个模块</b>。</li>
+  <li><b>第 7 步（1 天）· 档位 A。</b>若追求极致，加深度遮挡与更严的 FOV 标定。</li>
+</ol>
+
+<h3>验收标准</h3>
+<table>
+  <tr><th>指标</th><th>档位 C 目标</th><th>档位 B 目标</th><th>档位 A 目标</th></tr>
+  <tr><td>旋转跟随延迟</td><td>≤ 60 ms</td><td>≤ 60 ms</td><td>≤ 40 ms</td></tr>
+  <tr><td>静止抖动</td><td>≤ 2 px</td><td>≤ 2 px</td><td>≤ 1 px</td></tr>
+  <tr><td>内容与实体沙盘贴合误差</td><td>不要求</td><td>≤ 30 px</td><td>≤ 5 px</td></tr>
+  <tr><td>漂移（连续 30 分钟）</td><td>≤ 5°</td><td>≤ 1°</td><td>≤ 0.3°</td></tr>
+  <tr><td>帧率</td><td colspan="3">≥ 30 fps（目标 60）</td></tr>
+</table>
+
+<h3>必测场景</h3>
+<ol>
+  <li><b>横竖屏验证</b>：左右转 Pad，画面必须是水平方向动，不能上下动。</li>
+  <li><b>回到零点</b>：转到底再转回正对沙盘，内容应回到原位（验证无漂移累积）。</li>
+  <li><b>连续运行 30 分钟</b>：记录角度漂移量，这是决定 S1 还是 S2 的关键数据。</li>
+  <li><b>快速来回转</b>：不应有滞后拖影或过冲振荡。</li>
+  <li><b>慢速微调</b>：小幅度转动时不应有"卡顿跳格"（死区设置过大导致）。</li>
+  <li><b>USB 插拔</b>（S2）：拔掉再插上，应能自动恢复且无角度跳变。</li>
+  <li><b>光照变化</b>：开灯/关灯，走 S1/S2 时不应受影响（这正是它们优于视觉方案的地方）。</li>
+</ol>
+
+<div class="callout good">
+  <strong>最省事的一条路：</strong>如果第 4 步的档位 C 已经让用户满意（旋转联动顺滑、UI 稳定），并且展项方接受"屏幕上是虚拟沙盘"这个设定，那么<b>可以完全不做透传、不做内参标定、不做标记</b>——整个项目就是"加一个角度传感器 + 换掉三个常量"。这也是最不容易在长期运行中出问题的形态。
+</div>
+
+<footer>
+  本方案基于 <code>hunan-terrain-ar-demo</code> 实测参数（4.8×5.5 m 台面 · 16× 垂直夸张 · Three.js r180 · 原支架范围 ±18°/±12°）与「安卓 Pad + 固定支架 + 仅旋转」的实际约束推导。<br>
+  精度数字按 65° 水平视场 / 1280 px 采集宽度估算，实际需在目标设备上实测后修正。生成日期 2026-09-29。
+</footer>
+
+</div>
+</body>
+</html>

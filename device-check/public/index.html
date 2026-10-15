@@ -1,0 +1,1077 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>湖南地形 AR 沙盘 · 测试台</title>
+<!-- 空 favicon：避免浏览器自动请求 /favicon.ico 产生 404，
+     那条 404 会污染自动化回归里的「控制台零报错」判定。 -->
+<link rel="icon" href="data:,">
+<style>
+  :root{
+    --bg:#0b1418; --panel:#101e24; --panel2:#0d1a1f; --line:#1d333c;
+    --ink:#dceef0; --dim:#8fadb5; --dim2:#6d8b93;
+    --ok:#6fd48a; --warn:#f0b357; --bad:#ef6b6b; --info:#4fd1c5;
+    --mono:ui-monospace,SFMono-Regular,Consolas,monospace;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:15px/1.7 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+    padding:16px 14px 60px;-webkit-text-size-adjust:100%}
+  h1{font-size:19px;margin:6px 0 4px;font-weight:700}
+  .sub{color:var(--dim);font-size:12.5px;margin:0 0 16px}
+  h2{font-size:15px;margin:22px 0 10px;padding-left:10px;border-left:3px solid var(--info);font-weight:600}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin:10px 0}
+  .row{display:flex;justify-content:space-between;align-items:baseline;gap:10px;padding:6px 0;
+    border-bottom:1px solid rgba(29,51,60,.6);font-size:13.5px}
+  .row:last-child{border-bottom:none}
+  .row .k{color:var(--dim);flex:0 0 auto}
+  .row .v{font-family:var(--mono);font-size:13px;text-align:right;word-break:break-all}
+  .badge{display:inline-block;font:600 11.5px/1 var(--mono);padding:4px 9px;border-radius:999px;border:1px solid;white-space:nowrap}
+  .b-ok{color:var(--ok);border-color:#2c5a3c;background:#12261b}
+  .b-warn{color:var(--warn);border-color:#5c4a22;background:#241d0f}
+  .b-bad{color:var(--bad);border-color:#5c2a2a;background:#261212}
+  .b-info{color:var(--info);border-color:#26504d;background:#0f2422}
+  .b-idle{color:var(--dim);border-color:var(--line);background:var(--panel2)}
+  .big{display:flex;gap:8px;margin:10px 0}
+  .big > div{flex:1;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px;text-align:center}
+  .big .n{font:700 22px/1.15 var(--mono);color:#7ee0d2}
+  .big .l{font-size:11px;color:var(--dim);margin-top:4px;letter-spacing:.04em}
+  button{font:600 14px/1 inherit;color:#0b1418;background:var(--info);border:none;border-radius:10px;
+    padding:13px 18px;width:100%;margin:8px 0;cursor:pointer}
+  button.ghost{background:transparent;color:var(--info);border:1px solid #26504d}
+  button:disabled{opacity:.45}
+  .note{font-size:12.5px;color:var(--dim);margin:8px 0 0}
+  .verdict{background:var(--panel2);border:1px solid var(--line);border-left:3px solid var(--info);
+    border-radius:0 10px 10px 0;padding:12px 16px;margin:14px 0;font-size:13.5px}
+  .verdict.ok{border-left-color:var(--ok)}
+  .verdict.warn{border-left-color:var(--warn)}
+  .verdict.bad{border-left-color:var(--bad)}
+  pre{background:#081216;border:1px solid var(--line);border-radius:10px;padding:12px;overflow:auto;
+    font:11.5px/1.6 var(--mono);color:#9fd8cf;max-height:320px;white-space:pre-wrap;word-break:break-all}
+  .live{font-family:var(--mono);font-size:12.5px;color:#9fd8cf}
+  .bar{height:6px;border-radius:3px;background:#0a161a;border:1px solid var(--line);overflow:hidden;margin-top:6px}
+  .bar > i{display:block;height:100%;background:linear-gradient(90deg,#2f6d66,#4fd1c5);width:0%}
+
+  /* ---------- 测试页面导航（本页是总入口） ---------- */
+  .nav{display:grid;grid-template-columns:1fr;gap:10px;margin:0}
+  @media(min-width:640px){.nav{grid-template-columns:1fr 1fr}}
+  .navcard{display:block;text-decoration:none;color:inherit;background:var(--panel);
+    border:1px solid var(--line);border-radius:12px;padding:13px 15px;
+    transition:background .15s,border-color .15s}
+  .navcard:hover,.navcard:active{background:var(--panel2);border-color:#26504d}
+  .navcard .t{display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+    font-size:14.5px;font-weight:700;margin:0 0 5px}
+  .navcard .t .n{font:700 11.5px/1 var(--mono);color:var(--info);
+    border:1px solid #26504d;background:#0f2422;border-radius:999px;padding:4px 8px}
+  .navcard .d{font-size:12.5px;color:var(--dim);line-height:1.6}
+  .tag{font:600 11px/1 var(--mono);border-radius:999px;padding:4px 8px;border:1px solid;white-space:nowrap}
+  .tag-main{color:var(--ok);border-color:#2c5a3c;background:#12261b}
+  .tag-arcore{color:var(--warn);border-color:#5c4a22;background:#241d0f}
+  .tag-debug{color:var(--dim);border-color:var(--line);background:var(--panel2)}
+</style>
+</head>
+<body>
+
+<h1>湖南地形 AR 沙盘 · 测试台</h1>
+<p class="sub">小米平板6 AR 方案选型 · 请在<b>目标设备</b>上用浏览器打开本页。必须走 <b>HTTPS</b>，否则传感器与相机在浏览器里根本不存在（不是报错，是 API 都没有）。</p>
+
+<h2>测试页面</h2>
+<div class="nav">
+  <a class="navcard" href="./ar-gyro-demo.html">
+    <div class="t"><span class="n">01</span>湖南地形 AR 沙盘<span class="tag tag-main">主力方案</span></div>
+    <div class="d">真实湖南 DEM 地形（0–2076 m）+ 真实相机透视，视角由<b>设备陀螺仪</b>驱动，完全不依赖 ARCore。横屏使用，可点击选点、导出报告。</div>
+  </a>
+  <a class="navcard" href="./ar-camera.html">
+    <div class="t"><span class="n">02</span>相机 + 陀螺仪 叠加测试<span class="tag tag-main">不依赖 ARCore</span></div>
+    <div class="d">验证「相机一定能出图」这条退路：普通 getUserMedia 画面 + 陀螺仪叠加层，观察相对真实场景会不会滑动。</div>
+  </a>
+  <a class="navcard" href="./ar.html">
+    <div class="t"><span class="n">03</span>AR 跟踪稳定性测试<span class="tag tag-arcore">需要 ARCore</span></div>
+    <div class="d">实测固定支架下 ARCore 跟不跟得住。关键指标是<b>相机位置波动</b> —— 支架不动，相机位置就该恒定。</div>
+  </a>
+  <a class="navcard" href="./ar-min.html">
+    <div class="t"><span class="n">04</span>AR 最小可复现测试<span class="tag tag-arcore">需要 ARCore</span><span class="tag tag-debug">排查用</span></div>
+    <div class="d">把 WebXR 剥到只剩一个发光立方体 + 一块网格，用来判断<b>黑屏是 ARCore 的问题还是页面代码的问题</b>。</div>
+  </a>
+  <a class="navcard" href="./index.html">
+    <div class="t"><span class="n">05</span>设备能力自检<span class="tag tag-debug">本页</span></div>
+    <div class="d">回答「这台设备能不能用」：运行环境、姿态传感器、ARCore / WebXR、摄像头、外设逐项体检，可导出报告。</div>
+  </a>
+</div>
+
+<h2>设备能力自检</h2>
+<div class="verdict ok" style="font-size:13.5px">
+  <b>ARCore 已验证可用？</b> 若第 5 节显示「AR会话实测成功：是」，
+  建议接着做 <a href="./ar.html" style="color:#4fd1e0;font-weight:700">→ AR 跟踪稳定性测试</a>，
+  实测固定支架下 ARCore 跟不跟得住。本页只回答「能不能用」，那个页面回答「好不好用」。
+</div>
+
+<div id="overall" class="verdict">正在检测…</div>
+
+<h2>1 · 运行环境</h2>
+<div class="card" id="env"></div>
+
+<h2>2 · 姿态传感器（核心）</h2>
+<div class="card">
+  <div class="row"><span class="k">DeviceOrientation 事件</span><span class="v" id="do-support">—</span></div>
+  <div class="row"><span class="k">事件是否已触发</span><span class="v" id="do-fired">—</span></div>
+  <div class="row"><span class="k">事件频率（实时）</span><span class="v" id="do-hz">—</span></div>
+  <div class="row"><span class="k">绝对朝向（磁力计）</span><span class="v" id="do-absolute">—</span></div>
+  <div class="row"><span class="k">陀螺仪实际输出</span><span class="v" id="gyro-real">—</span></div>
+</div>
+
+<h3>偏航来源逐路排查</h3>
+<div class="card" id="src-table">—</div>
+<div class="card">
+  <div class="row"><span class="k">原始陀螺仪角速度</span><span class="v" id="mot-now">—</span></div>
+  <div class="note">
+    偏航有三个可能的来源，能力差别很大：<b>① deviceorientation</b> 是浏览器融合后的结果；
+    <b>② deviceorientationabsolute</b> 需要磁力计，无磁力计的机型上可能是恒定占位值；
+    <b>③ devicemotion.rotationRate</b> 是<b>原始陀螺仪角速度</b>，最可信。
+    若①③只有一路「活跃」，就用活跃的那一路做偏航。
+  </div>
+</div>
+<div class="big">
+  <div><div class="n" id="v-alpha">—</div><div class="l">ALPHA 偏航</div></div>
+  <div><div class="n" id="v-beta">—</div><div class="l">BETA 俯仰</div></div>
+  <div><div class="n" id="v-gamma">—</div><div class="l">GAMMA 翻滚</div></div>
+</div>
+<div class="card">
+  <div class="row"><span class="k">判定</span><span class="v" id="att-verdict">—</span></div>
+  <div class="note">转动平板观察：<b>BETA 跟随上下倾斜</b>即为加速度计正常；<b>ALPHA 跟随左右旋转</b>即为偏航可用。ALPHA 若在静止时持续变化，说明是陀螺仪积分（会漂移）。</div>
+</div>
+
+<h2>3 · 旋转响应检查（先做这个）</h2>
+<div class="card">
+  <div class="note">
+    静止时如果 ALPHA 完全不变，有两种可能：<b>① 传感器确实很好</b>；
+    <b>② 系统在静止时把陀螺仪置于低功耗模式，角速度直接报 0</b>（转起来才会有偏置）。
+    这两种情况页面自己分不清，必须让你<b>主动转动平板</b>来定性。
+    点下面的按钮，然后<b>缓慢左右转动平板约 45°，持续 5 秒</b>。
+  </div>
+</div>
+<button id="resp-start">开始旋转响应检查（转动平板 5 秒）</button>
+<div class="card" id="resp-result">点击上方按钮开始…</div>
+
+<h2>4 · 漂移测试（决定是否需要 AprilTag）</h2>
+<div class="card">
+  <div class="row"><span class="k">测试状态</span><span class="v" id="drift-state">未开始</span></div>
+  <div class="row"><span class="k">已用时</span><span class="v" id="drift-time">0.0 s</span></div>
+  <div class="row"><span class="k">当前漂移（ALPHA）</span><span class="v" id="drift-now">—</span></div>
+  <div class="row"><span class="k">折算每分钟（ALPHA）</span><span class="v" id="drift-rate">—</span></div>
+  <div class="row"><span class="k">最大偏移（ALPHA）</span><span class="v" id="drift-max">—</span></div>
+  <div class="row"><span class="k">陀螺仪积分偏航</span><span class="v" id="gyro-yaw">—</span></div>
+  <div class="row"><span class="k">采样数 / 频率</span><span class="v" id="drift-samples">—</span></div>
+  <div class="row"><span class="k">结论</span><span class="v" id="drift-verdict">—</span></div>
+</div>
+<div class="bar"><i id="drift-bar"></i></div>
+<button id="drift-start">开始漂移测试（平板保持不动 60 秒）</button>
+<div class="note">
+  把平板放到支架上、保持完全静止，然后开始。这是判断「纯陀螺仪方案能不能用」的<b>唯一可靠依据</b>。
+  表中同时给出两路结果：<b>ALPHA</b>（浏览器融合）与<b>陀螺仪积分</b>（原始角速度），后者更可信。
+</div>
+
+<h2>5 · ARCore / WebXR</h2>
+<div class="card" id="xr"></div>
+<button id="ar-try">实际创建 AR 会话（真正验证 ARCore 能不能用）</button>
+<div class="card" id="ar-result">
+  <div class="note">
+    <b>isSessionSupported 返回 true 不等于真的能开起来。</b>
+    它只说明浏览器"认为"支持；实际创建会话时仍可能因为缺少
+    <b>Google Play Services for AR</b> 而失败。
+    点上面的按钮会真的请求一次 <code>immersive-ar</code> 会话，成功即说明可以走真实 AR 路线。
+  </div>
+</div>
+
+<h2>6 · 摄像头</h2>
+<div class="card" id="cam"></div>
+
+<h2>7 · 外设（编码器 / 蓝牙方案）</h2>
+<div class="card" id="periph"></div>
+
+<h2>8 · 导出报告</h2>
+<button id="export">生成报告文本</button>
+<button class="ghost" id="copy">复制到剪贴板</button>
+<pre id="report">点击上方按钮生成…</pre>
+
+<script>
+const $ = id => document.getElementById(id);
+const R = {};
+
+function badge(text, kind) {
+  return '<span class="badge b-' + kind + '">' + text + '</span>';
+}
+function row(k, v) {
+  return '<div class="row"><span class="k">' + k + '</span><span class="v">' + v + '</span></div>';
+}
+
+/* ---------- 1. 环境 ---------- */
+const ua = navigator.userAgent;
+R.https = location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+R.ua = ua;
+R.screen = screen.width + 'x' + screen.height + ' @' + window.devicePixelRatio + 'x';
+R.viewport = innerWidth + 'x' + innerHeight;
+
+const isXiaomi = /xiaomi|redmi|mi pad|23043rp/i.test(ua);
+const isAndroid = /android/i.test(ua);
+const androidVer = (ua.match(/Android\s+([\d.]+)/i) || [])[1] || '未知';
+const chromeVer = (ua.match(/Chrome\/([\d.]+)/i) || [])[1] || '未知';
+
+/* 平板在 Chrome 里开「桌面版网站」后，UA 会变成 X11; Linux x86_64，
+   但触屏、传感器、ARCore 全都还在。
+   只看 UA 会把真机误判成「桌面设备」——必须结合触屏能力判断。 */
+const isTouchDevice = (navigator.maxTouchPoints || 0) > 1;
+const likelyDesktopSiteMode = !isAndroid && isTouchDevice;
+const isMobileLike = isAndroid || isTouchDevice;
+
+/* 很多国产浏览器会把 Chrome/xxx 写进 UA（那只是内核版本），
+   内核相同不代表能力相同。必须按品牌特征串识别真实浏览器，
+   否则会把「小米浏览器」误报成「Chrome」，让排查方向完全跑偏。 */
+function detectBrowser(s) {
+  const table = [
+    [/MiuiBrowser\/([\d.]+)/i,           '小米浏览器 MIUI Browser', true],
+    [/HuaweiBrowser\/([\d.]+)/i,         '华为浏览器', true],
+    [/HeyTapBrowser\/([\d.]+)/i,         'OPPO 浏览器', true],
+    [/VivoBrowser\/([\d.]+)/i,           'vivo 浏览器', true],
+    [/Quark\/([\d.]+)/i,                 '夸克浏览器', true],
+    [/UCBrowser\/([\d.]+)/i,             'UC 浏览器', true],
+    [/QQBrowser\/([\d.]+)/i,             'QQ 浏览器', true],
+    [/SogouMobileBrowser\/([\d.]+)/i,    '搜狗浏览器', true],
+    [/baidubrowser\/([\d.]+)/i,          '百度浏览器', true],
+    [/Edg(?:e|A|iOS)?\/([\d.]+)/i,       'Edge', false],
+    [/Firefox\/([\d.]+)/i,               'Firefox', false],
+    [/CriOS\/([\d.]+)/i,                 'Chrome (iOS)', false],
+    [/Chrome\/([\d.]+)/i,                'Chrome', false],
+  ];
+  for (const t of table) {
+    const m = s.match(t[0]);
+    if (m) return { name: t[1], version: m[1] || '', domestic: t[2] };
+  }
+  return { name: '未知', version: '', domestic: false };
+}
+const browser = detectBrowser(ua);
+/* 只有真正的 Chrome 才在设备能力上有保障 */
+const browserOk = browser.name === 'Chrome' || browser.name === 'Edge';
+
+$('env').innerHTML =
+  row('HTTPS 安全上下文', R.https ? badge('是', 'ok') : badge('否（摄像头/传感器可能不可用）', 'bad')) +
+  row('操作系统', isAndroid ? 'Android ' + androidVer : '非 Android') +
+  row('触屏设备', isTouchDevice ? badge('是（' + (navigator.maxTouchPoints || 0) + ' 点）', 'ok') : badge('否', 'idle')) +
+  row('疑似桌面版网站模式', likelyDesktopSiteMode
+    ? badge('是 —— UA 是桌面系统但设备有触屏。传感器可用，但视口/像素比会变，建议关掉「桌面版网站」', 'warn')
+    : badge('否', 'ok')) +
+  row('浏览器', browser.name + (browser.version ? ' ' + browser.version : '') +
+    (browserOk ? '' : ' ' + badge(browser.domestic ? '国产内核，设备能力常被裁剪' : '建议用 Chrome', 'warn'))) +
+  row('疑似小米设备', isXiaomi ? badge('是', 'ok') : badge('未识别', 'idle')) +
+  row('屏幕', R.screen) +
+  row('视口', R.viewport) +
+  row('屏幕方向', (screen.orientation && screen.orientation.type) || '未知');
+
+/* ---------- 2. 姿态传感器 ---------- */
+let lastOrient = null, absoluteSeen = false, relativeSeen = false, doFired = false;
+let alphaSamples = [], betaSeen = false, gammaSeen = false;
+let evTimes = [];          // 最近事件的到达时间戳，用于实时频率
+let evTotal = 0;           // 累计事件数
+let evAlphaNonNull = 0;    // 其中 alpha 非 null 的次数
+
+/* 两个 deviceorientation 事件源必须分开记录。
+   它们都会写 lastOrient，如果让「绝对源」覆盖「相对源」，
+   在无磁力计的机型上（绝对源可能是个恒定占位值）就会把
+   真正在变化的相对源盖掉 —— 表现为「ALPHA 全程不动」的假象。 */
+let relOrient = null, absOrient = null;
+let relTotal = 0, absTotal = 0;
+
+/* devicemotion 提供的是原始陀螺仪角速度（deg/s），
+   完全绕过浏览器的姿态融合，是最直接、最可信的偏航来源。 */
+let lastMotion = null, motionSeen = false, motTotal = 0;
+let motTimes = [];
+let relChangedAt = 0, absChangedAt = 0, motChangedAt = 0;
+let relLastVal = null, absLastVal = null;
+
+const hasDOE = typeof DeviceOrientationEvent !== 'undefined';
+const hasDME = typeof DeviceMotionEvent !== 'undefined';
+$('do-support').innerHTML = hasDOE ? badge('支持', 'ok') : badge('不支持', 'bad');
+
+/* 实时事件频率：真实设备通常 30~60 Hz；明显偏低说明浏览器没在推传感器数据 */
+function currentHz() {
+  const now = performance.now();
+  while (evTimes.length && now - evTimes[0] > 2000) evTimes.shift();
+  return evTimes.length / 2;
+}
+function motionHz() {
+  const now = performance.now();
+  while (motTimes.length && now - motTimes[0] > 2000) motTimes.shift();
+  return motTimes.length / 2;
+}
+
+/* 最近一次数值变化距今多久 —— 用来判断某个通道是不是「死」的 */
+function ago(ts) { return ts ? ((performance.now() - ts) / 1000).toFixed(1) + ' s 前' : '从未变化'; }
+function liveBadge(ts) {
+  const sec = ts ? (performance.now() - ts) / 1000 : Infinity;
+  if (sec < 2) return badge('活跃', 'ok');
+  if (sec < 10) return badge(ago(ts), 'warn');
+  return badge('无变化（' + ago(ts) + '）', 'bad');
+}
+
+setInterval(() => {
+  if (!doFired) { $('do-hz').innerHTML = badge('无事件', 'bad'); return; }
+  const hz = currentHz();
+  const kind = hz >= 20 ? 'ok' : (hz >= 5 ? 'warn' : 'bad');
+  const tip = hz >= 20 ? '' : (hz >= 5 ? '（偏低）' : '（过低，姿态数据不可用）');
+  $('do-hz').innerHTML = badge(hz.toFixed(1) + ' Hz' + tip, kind) +
+    '<span style="color:#8fadb5;font-size:12px"> 累计 ' + evTotal + ' 次</span>';
+
+  /* 三条通道各自是否活跃 —— 这是区分「哪个源是活的」的关键 */
+  if ($('src-table')) {
+    $('src-table').innerHTML =
+      row('① deviceorientation（相对偏航）', relTotal + ' 次 · ' + liveBadge(relChangedAt)) +
+      row('② deviceorientationabsolute（绝对偏航）', absTotal + ' 次 · ' + liveBadge(absChangedAt)) +
+      row('③ devicemotion.rotationRate（原始陀螺仪）',
+        (hasDME ? (motionHz().toFixed(1) + ' Hz · ' + motTotal + ' 次 · ' + liveBadge(motChangedAt))
+                : badge('本浏览器不支持', 'bad')));
+  }
+  if ($('mot-now') && lastMotion && lastMotion.rotationRate) {
+    const rr = lastMotion.rotationRate;
+    const f = v => (v === null || v === undefined) ? 'null' : v.toFixed(2);
+    $('mot-now').textContent = 'α ' + f(rr.alpha) + '  β ' + f(rr.beta) + '  γ ' + f(rr.gamma) + '  °/s';
+  }
+}, 500);
+
+function onOrient(e) {          /* deviceorientation —— 相对源，作为主用源 */
+  doFired = true;
+  relOrient = e;
+  relTotal++;
+  if (e.alpha !== null && e.alpha !== undefined) {
+    if (relLastVal === null || Math.abs(e.alpha - relLastVal) > 0.005) relChangedAt = performance.now();
+    relLastVal = e.alpha;
+  }
+  if (e.absolute === true) absoluteSeen = true;
+  lastOrient = e;               /* 相对源优先 */
+  evTotal++;
+  evTimes.push(performance.now());
+  if (e.alpha !== null && e.alpha !== undefined) {
+    evAlphaNonNull++;
+    alphaSamples.push(e.alpha);
+    if (alphaSamples.length > 240) alphaSamples.shift();
+    $('v-alpha').textContent = e.alpha.toFixed(2) + '°';
+    /* 漂移测试期间记录原始 ALPHA 的极值 —— 用于识别「传感器输出恒定」 */
+    if (driftTimer) {
+      if (e.alpha < driftAMin) driftAMin = e.alpha;
+      if (e.alpha > driftAMax) driftAMax = e.alpha;
+      driftN++;
+    }
+  } else {
+    $('v-alpha').textContent = 'null';
+  }
+  if (e.beta !== null && e.beta !== undefined) { betaSeen = true; $('v-beta').textContent = e.beta.toFixed(2) + '°'; }
+  if (e.gamma !== null && e.gamma !== undefined) { gammaSeen = true; $('v-gamma').textContent = e.gamma.toFixed(2) + '°'; }
+  if (respActive) respRecord(e, null);
+  updateSensorVerdict();
+}
+function onOrientAbs(e) {
+  /* 只记录，绝不覆盖 lastOrient —— 见上面注释 */
+  absoluteSeen = true;
+  absOrient = e;
+  absTotal++;
+  if (e.alpha !== null && e.alpha !== undefined) {
+    if (absLastVal === null || Math.abs(e.alpha - absLastVal) > 0.005) absChangedAt = performance.now();
+    absLastVal = e.alpha;
+  }
+}
+
+/* 漂移测试期间对原始陀螺仪做积分。变量在此声明，
+   保证 onMotion 首次触发时它们已初始化（脚本同步跑完才会派发事件）。 */
+let gyroT0 = 0, gyroLastT = 0, gyroYaw = 0, gyroN = 0, gyroRateSum = 0, gyroRatePeak = 0;
+
+function onMotion(e) {
+  motionSeen = true;
+  lastMotion = e;
+  motTotal++;
+  motTimes.push(performance.now());
+  const rr = e.rotationRate;
+  if (rr && rr.alpha !== null && rr.alpha !== undefined) {
+    if (Math.abs(rr.alpha) > 0.02) motChangedAt = performance.now();
+    /* 漂移测试期间积分原始陀螺仪 —— 这是最可信的偏航漂移来源 */
+    if (driftTimer) {
+      const dt = (performance.now() - gyroT0) / 1000;
+      const step = performance.now() - gyroLastT;
+      gyroLastT = performance.now();
+      if (step > 0 && step < 500) gyroYaw += rr.alpha * (step / 1000);
+      gyroN++;
+      gyroRateSum += rr.alpha;
+      if (Math.abs(rr.alpha) > Math.abs(gyroRatePeak)) gyroRatePeak = rr.alpha;
+      void dt;
+    }
+  }
+  if (respActive) respRecord(null, rr);
+}
+
+function updateSensorVerdict() {
+  $('do-fired').innerHTML = doFired ? badge('已触发', 'ok') : badge('未触发', 'warn');
+  const compass = (lastOrient && lastOrient.webkitCompassHeading !== undefined && lastOrient.webkitCompassHeading !== null);
+  if (absoluteSeen || compass) {
+    $('do-absolute').innerHTML = badge('可用（有绝对参考）', 'ok');
+  } else if (doFired) {
+    $('do-absolute').innerHTML = badge('不可用（仅相对）', 'warn');
+  } else {
+    $('do-absolute').innerHTML = badge('待定', 'idle');
+  }
+  if (betaSeen) {
+    $('gyro-real').innerHTML = badge('加速度计正常（BETA 有值）', 'ok');
+  } else if (doFired) {
+    $('gyro-real').innerHTML = badge('未见 BETA 值', 'warn');
+  }
+  let v = '—';
+  if (doFired && betaSeen) v = badge('俯仰可用；偏航需看漂移测试', 'info');
+  else if (!doFired) v = badge('传感器未响应', 'bad');
+  $('att-verdict').innerHTML = v;
+}
+
+if (hasDOE) {
+  window.addEventListener('deviceorientationabsolute', onOrientAbs, true);
+  window.addEventListener('deviceorientation', onOrient, true);
+}
+/* devicemotion 提供原始陀螺仪角速度，是比融合后的 alpha 更可信的偏航来源 */
+if (hasDME) {
+  window.addEventListener('devicemotion', onMotion, true);
+}
+/* iOS 需要手势授权（两个事件各自独立授权） */
+const needPerm = (hasDOE && typeof DeviceOrientationEvent.requestPermission === 'function')
+              || (hasDME && typeof DeviceMotionEvent !== 'undefined'
+                  && typeof DeviceMotionEvent.requestPermission === 'function');
+
+async function requestSensorPermission() {
+  const out = [];
+  if (hasDOE && typeof DeviceOrientationEvent.requestPermission === 'function') {
+    try { out.push('orientation: ' + await DeviceOrientationEvent.requestPermission()); }
+    catch (e) { out.push('orientation 失败: ' + e.message); }
+  }
+  if (hasDME && typeof DeviceMotionEvent !== 'undefined'
+      && typeof DeviceMotionEvent.requestPermission === 'function') {
+    try { out.push('motion: ' + await DeviceMotionEvent.requestPermission()); }
+    catch (e) { out.push('motion 失败: ' + e.message); }
+  }
+  return out;
+}
+
+/* ---------- 3. 漂移测试 ---------- */
+let driftT0 = 0, driftA0 = null, driftTimer = null, driftMax = 0, driftNet = 0;
+let driftAMin = Infinity, driftAMax = -Infinity, driftN = 0;
+let driftHidden = false;   // 测试期间页面是否进过后台
+
+/* 页面进后台时浏览器会停发传感器事件，测试必须作废 */
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden && driftTimer) driftHidden = true;
+});
+
+function angDiff(a, b) {
+  let d = a - b;
+  while (d > 180) d -= 360;
+  while (d < -180) d += 360;
+  return d;
+}
+
+/* 判定阈值：要把贴合误差压到 5 px 内需要 0.25° 角分辨率
+   （65° HFOV / 1280 px ⇒ 1° ≈ 19.7 px），所以：
+   < 0.3°/min  → 一分钟内累计误差仍 < 0.3°，纯传感器可用
+   0.3~2       → 需滤波 + 定期重标定
+   > 2         → 偏航不可用，必须上 AprilTag 或编码器 */
+function driftVerdict() {
+  const hasAlpha = R.driftRate !== null && R.driftRate !== undefined;
+  const hasGyro = R.gyroDriftRate !== null && R.gyroDriftRate !== undefined;
+  if (!hasAlpha && !hasGyro) {
+    return badge('样本不足，请完整跑满 60 秒', 'warn');
+  }
+  if (R.driftHidden) {
+    return badge('测试期间页面进入过后台，浏览器会停发传感器事件 → 本次结果无效，请保持页面在前台重测', 'bad');
+  }
+  if (R.driftLowRate && R.gyroHz !== null && R.gyroHz < 5) {
+    return badge('姿态与运动事件频率都低于 5 Hz，浏览器基本没在推送传感器数据 → ' +
+                 '本次结果不可用，请换 Chrome 重测', 'bad');
+  }
+
+  const out = [];
+
+  /* ---- 第①路：ALPHA（浏览器融合后的偏航） ---- */
+  if (!hasAlpha) {
+    out.push(badge('ALPHA：无数据', 'idle'));
+  } else if (R.driftFrozen) {
+    out.push(badge('ALPHA：60 秒内全程不变（范围 ' + R.driftAlphaRange + '°），这一路不可用', 'bad'));
+  } else if (R.driftSuspect) {
+    out.push(badge('ALPHA：最大偏移 ' + R.driftMax + '°，中途可能被移动过', 'bad'));
+  } else {
+    const r = Math.abs(R.driftRate);
+    out.push(badge('ALPHA 漂移 ' + r.toFixed(2) + ' °/min', r < 0.3 ? 'ok' : (r < 2 ? 'warn' : 'bad')));
+  }
+
+  /* ---- 第②路：原始陀螺仪积分（更可信） ---- */
+  if (!hasGyro) {
+    out.push(badge('陀螺仪积分：无数据', 'idle'));
+  } else if (R.gyroFlat) {
+    out.push(badge('陀螺仪角速度全程≈0（峰值 ' + R.gyroRatePeak + ' °/s），静止时属正常', 'idle'));
+  } else {
+    const g = Math.abs(R.gyroDriftRate);
+    out.push(badge('陀螺仪积分漂移 ' + g.toFixed(2) + ' °/min', g < 0.3 ? 'ok' : (g < 2 ? 'warn' : 'bad')));
+  }
+
+  /* ---- 给出该用哪一路 ---- */
+  let tail = '';
+  if (R.driftFrozen && hasGyro && !R.gyroFlat) {
+    tail = '<div style="margin-top:6px">→ 建议：<b>改用陀螺仪积分做偏航</b>，不要依赖 ALPHA。</div>';
+  } else if (R.driftFrozen) {
+    tail = '<div style="margin-top:6px">→ ALPHA 在静止时不变，这本身<b>可能正常</b>' +
+           '（系统在静止时把陀螺仪置于低功耗模式，角速度直接报 0）。' +
+           '请先做<b>第 3 节旋转响应检查</b>：转动平板时若 ALPHA 有响应，说明传感器没问题，' +
+           '这次零漂移是可信的；若毫无响应，才说明该浏览器没提供真实偏航数据。</div>';
+  }
+  return out.join(' ') + tail;
+}
+
+function startDrift() {
+  const alphaOk = lastOrient && lastOrient.alpha !== null && lastOrient.alpha !== undefined;
+  const gyroOk = motionSeen;
+  if (!alphaOk && !gyroOk) {
+    $('drift-state').textContent = '无法开始：既没有 ALPHA，也没有原始陀螺仪数据（浏览器没在推传感器事件）';
+    return;
+  }
+  /* 频率过低时先拦下来，别浪费 60 秒跑一个注定无用的测试 */
+  const hz = currentHz();
+  if (hz < 1 && motionHz() < 1) {
+    $('drift-state').textContent = '无法开始：姿态与运动事件频率都接近 0，传感器没有在推数据。请换用 Chrome 打开本页。';
+    return;
+  }
+  driftT0 = performance.now();
+  driftA0 = alphaOk ? lastOrient.alpha : null;
+  driftMax = 0;
+  driftNet = 0;
+  driftAMin = Infinity;
+  driftAMax = -Infinity;
+  driftN = 0;
+  driftHidden = false;
+  /* 原始陀螺仪积分状态 */
+  gyroT0 = performance.now();
+  gyroLastT = gyroT0;
+  gyroYaw = 0;
+  gyroN = 0;
+  gyroRateSum = 0;
+  gyroRatePeak = 0;
+  R.driftRate = null;
+  R.driftMax = undefined;
+  R.driftSuspect = undefined;
+  R.driftFrozen = undefined;
+  R.driftLowRate = undefined;
+  R.driftHidden = undefined;
+  R.gyroDriftRate = null;
+  $('drift-start').textContent = '停止测试';
+  $('drift-state').textContent = '进行中…';
+  $('drift-verdict').innerHTML = '—';
+  driftTimer = setInterval(() => {
+    const t = (performance.now() - driftT0) / 1000;
+    /* 采样数/频率先于数据判断，便于一眼看出浏览器有没有在推数据 */
+    const hzNow = t > 0 ? driftN / t : 0;
+    const gHz = t > 0 ? gyroN / t : 0;
+    $('drift-samples').innerHTML = driftN + ' 次 · ' + hzNow.toFixed(1) + ' Hz' +
+      (hzNow < 5 ? ' ' + badge('过低', 'bad') : (hzNow < 20 ? ' ' + badge('偏低', 'warn') : '')) +
+      '<br><span style="color:#8fadb5;font-size:12px">陀螺仪 ' + gyroN + ' 次 · ' +
+      gHz.toFixed(1) + ' Hz</span>';
+    /* 陀螺仪积分结果实时显示 */
+    $('gyro-yaw').textContent = gyroN
+      ? gyroYaw.toFixed(2) + '°  (' + (t > 2 ? (gyroYaw / t * 60).toFixed(2) : '—') + ' °/min)'
+      : '无数据';
+    if (!alphaOk) { if (t >= 60) stopDrift(true); return; }
+    if (!lastOrient || lastOrient.alpha === null) return;
+    const d = angDiff(lastOrient.alpha, driftA0);
+    driftNet = d;
+    driftMax = Math.max(driftMax, Math.abs(d));
+    $('drift-time').textContent = t.toFixed(1) + ' s';
+    $('drift-now').textContent = d.toFixed(2) + '°';
+    $('drift-max').textContent = driftMax.toFixed(2) + '°';
+    $('drift-rate').textContent = t > 2 ? (d / t * 60).toFixed(2) + ' °/min' : '—';
+    $('drift-bar').style.width = Math.min(100, t / 60 * 100) + '%';
+    if (t >= 60) stopDrift(true);
+  }, 100);
+}
+
+function stopDrift(done) {
+  if (!driftTimer) return;
+  clearInterval(driftTimer);
+  driftTimer = null;
+  const t = (performance.now() - driftT0) / 1000;
+  $('drift-start').textContent = '重新测试';
+  $('drift-state').textContent = done ? '已完成（60 秒）' : '已提前停止（仅 ' + t.toFixed(1) + ' 秒）';
+  R.driftSeconds = Number(t.toFixed(1));
+  R.driftNet = Number(driftNet.toFixed(2));
+  R.driftMax = Number(driftMax.toFixed(2));
+  R.driftRate = t > 2 ? Number((driftNet / t * 60).toFixed(3)) : null;
+  /* 原始 ALPHA 在整个测试中的变化范围。真实 MEMS 陀螺仪必然有 LSB 噪声，
+     范围恒为 0 说明 ALPHA 这一路读数没有在变 —— 但注意这不等于「传感器是假的」，
+     静止时系统可能把陀螺仪置于低功耗模式，速率直接报 0。必须配合「旋转响应检查」定性。 */
+  R.driftAlphaRange = driftN === 0 ? null
+    : Number((driftAMax - driftAMin).toFixed(4));
+  R.driftSamples = driftN;
+  /* 测试期间实际的事件频率。真实设备 30~60 Hz；若只有个位数，
+     说明浏览器根本没在推送传感器数据，测出来的「零漂移」毫无意义。 */
+  R.driftHz = t > 0 ? Number((driftN / t).toFixed(2)) : null;
+  R.driftLowRate = R.driftHz !== null && R.driftHz < 5;
+  R.driftHidden = driftHidden;
+  R.driftFrozen = driftN > 0 && R.driftAlphaRange < 0.01;
+  /* 静止时若出现大偏移，多半是中途碰过平板 —— 结果不可信 */
+  R.driftSuspect = driftMax > 5;
+
+  /* ---- 原始陀螺仪积分结果（比融合后的 alpha 更可信） ---- */
+  R.gyroSamples = gyroN;
+  R.gyroHz = t > 0 ? Number((gyroN / t).toFixed(2)) : null;
+  R.gyroDriftRate = gyroN > 0 && t > 2 ? Number((gyroYaw / t * 60).toFixed(3)) : null;
+  R.gyroYaw = gyroN > 0 ? Number(gyroYaw.toFixed(3)) : null;
+  R.gyroRateMean = gyroN > 0 ? Number((gyroRateSum / gyroN).toFixed(4)) : null;
+  R.gyroRatePeak = Number(gyroRatePeak.toFixed(4));
+  /* 整段测试里角速度最大值仍接近 0 —— 静止时应如此，
+     但也可能是陀螺仪根本没输出，靠「旋转响应检查」区分 */
+  R.gyroFlat = gyroN > 0 && Math.abs(gyroRatePeak) < 0.05;
+
+  R.driftDone = !!done;
+  $('drift-verdict').innerHTML = driftVerdict();
+  updateOverall();
+}
+
+/* ---------- 3b. 旋转响应检查 ----------
+   静止时「零漂移」有两种成因，必须区分：
+     ① 传感器确实很好（真零漂移）
+     ② 系统在静止时把陀螺仪置于低功耗模式，角速度直接报 0（假零漂移，一转起来就有偏置）
+   让用户主动左右转动平板，看哪个通道有响应即可定性。 */
+let respActive = false, respT0 = 0, respTimer = null;
+let respAlphaMin = Infinity, respAlphaMax = -Infinity;
+let respBetaMin = Infinity, respBetaMax = -Infinity;
+let respRateMin = Infinity, respRateMax = -Infinity;
+let respN = 0;
+
+function respRecord(e, rr) {
+  respN++;
+  if (e) {
+    if (e.alpha !== null && e.alpha !== undefined) {
+      if (e.alpha < respAlphaMin) respAlphaMin = e.alpha;
+      if (e.alpha > respAlphaMax) respAlphaMax = e.alpha;
+    }
+    if (e.beta !== null && e.beta !== undefined) {
+      if (e.beta < respBetaMin) respBetaMin = e.beta;
+      if (e.beta > respBetaMax) respBetaMax = e.beta;
+    }
+  }
+  if (rr && rr.alpha !== null && rr.alpha !== undefined) {
+    if (rr.alpha < respRateMin) respRateMin = rr.alpha;
+    if (rr.alpha > respRateMax) respRateMax = rr.alpha;
+  }
+}
+
+function startRespCheck() {
+  respActive = true;
+  respT0 = performance.now();
+  respAlphaMin = Infinity; respAlphaMax = -Infinity;
+  respBetaMin = Infinity; respBetaMax = -Infinity;
+  respRateMin = Infinity; respRateMax = -Infinity;
+  respN = 0;
+  $('resp-start').textContent = '正在检测…（请左右转动平板）';
+  $('resp-start').disabled = true;
+  $('resp-result').innerHTML = '请缓慢左右转动平板，幅度约 45°，持续 5 秒…';
+  respTimer = setInterval(() => {
+    const t = (performance.now() - respT0) / 1000;
+    $('resp-result').innerHTML = '检测中… ' + t.toFixed(1) + ' s / 5 s（样本 ' + respN + '）';
+    if (t >= 5) stopRespCheck();
+  }, 200);
+}
+
+function stopRespCheck() {
+  if (!respTimer) return;
+  clearInterval(respTimer);
+  respTimer = null;
+  respActive = false;
+  $('resp-start').disabled = false;
+  $('resp-start').textContent = '重新做旋转响应检查';
+
+  const aRange = respAlphaMax > respAlphaMin ? Number((respAlphaMax - respAlphaMin).toFixed(3)) : 0;
+  const bRange = respBetaMax > respBetaMin ? Number((respBetaMax - respBetaMin).toFixed(3)) : 0;
+  const rRange = respRateMax > respRateMin ? Number((respRateMax - respRateMin).toFixed(3)) : 0;
+  const rPeak = Number(Math.max(Math.abs(respRateMin === Infinity ? 0 : respRateMin),
+                                Math.abs(respRateMax === -Infinity ? 0 : respRateMax)).toFixed(3));
+
+  R.respAlphaRange = aRange;
+  R.respBetaRange = bRange;
+  R.respRatePeak = rPeak;
+  R.respSamples = respN;
+  R.respAlphaResponsive = aRange > 1;
+  R.respGyroResponsive = rPeak > 5;
+
+  let html = '';
+  html += row('样本数', String(respN));
+  html += row('ALPHA 变化范围', aRange + '°  ' +
+    (R.respAlphaResponsive ? badge('有响应', 'ok') : badge('无响应', 'bad')));
+  html += row('BETA 变化范围', bRange + '°  ' +
+    (bRange > 1 ? badge('有响应', 'ok') : badge('无响应', 'bad')));
+  html += row('陀螺仪角速度峰值', rPeak + ' °/s  ' +
+    (R.respGyroResponsive ? badge('有响应', 'ok') : badge('无响应', 'bad')));
+
+  if (R.respAlphaResponsive && R.respGyroResponsive) {
+    html += row('结论', badge('传感器正常。静止时的零漂移是可信的，可以直接跑漂移测试。', 'ok'));
+  } else if (R.respGyroResponsive && !R.respAlphaResponsive) {
+    html += row('结论', badge('陀螺仪正常，但浏览器没提供可用的 ALPHA 偏航。' +
+      '→ 改用陀螺仪积分做偏航，不要依赖 ALPHA。', 'warn'));
+  } else if (!R.respGyroResponsive && !R.respAlphaResponsive) {
+    html += row('结论', badge('转动平板时两个通道都毫无反应 —— 该浏览器没有提供真实传感器数据。' +
+      '请换 Chrome 重试。', 'bad'));
+  } else {
+    html += row('结论', badge('ALPHA 有响应但陀螺仪角速度接近 0，' +
+      '可能是浏览器只做了姿态融合、没有暴露原始陀螺仪。漂移测试仍可用，但精度打折。', 'warn'));
+  }
+  $('resp-result').innerHTML = html;
+  updateOverall();
+}
+
+$('resp-start').addEventListener('click', async () => {
+  if (respTimer) return;
+  if (needPerm) {
+    const res = await requestSensorPermission();
+    if (res.some(s => s.includes('denied'))) {
+      $('resp-result').textContent = '权限被拒绝：' + res.join(' / ');
+      return;
+    }
+  }
+  startRespCheck();
+});
+
+$('drift-start').addEventListener('click', async () => {
+  if (driftTimer) { stopDrift(false); return; }   // 测试中 → 中途停止
+  if (needPerm) {
+    const res = await requestSensorPermission();
+    if (res.some(s => s.includes('denied'))) {
+      $('drift-state').textContent = '权限被拒绝：' + res.join(' / ');
+      return;
+    }
+  }
+  startDrift();
+});
+
+/* ---------- 4. WebXR / ARCore ---------- */
+(async () => {
+  let html = '';
+  R.xrPresent = !!navigator.xr;
+  if (!navigator.xr) {
+    html += row('navigator.xr', badge('不存在', 'bad'));
+    html += row('结论', badge('WebXR 不可用 → 走传感器/编码器方案', 'warn'));
+  } else {
+    html += row('navigator.xr', badge('存在', 'ok'));
+    for (const mode of ['immersive-ar', 'immersive-vr', 'inline']) {
+      try {
+        const ok = await navigator.xr.isSessionSupported(mode);
+        html += row('isSessionSupported("' + mode + '")', ok ? badge('支持', 'ok') : badge('不支持', 'idle'));
+        if (mode === 'immersive-ar') R.arSupported = ok;
+      } catch (e) {
+        /* 查询本身抛错（例如权限策略拦截）—— 与「不支持」是两回事，必须区分 */
+        html += row('isSessionSupported("' + mode + '")',
+          badge('查询失败：' + (e.name || e.message || '未知'), 'warn'));
+        if (mode === 'immersive-ar') R.xrError = String(e.name || e.message || e);
+      }
+    }
+    if (R.arSupported) {
+      html += row('结论', badge('ARCore 可用 → WebXR 方案可行', 'ok'));
+    } else {
+      html += row('结论', badge('ARCore 未就绪（可能缺 Google Play Services for AR）', 'warn'));
+    }
+  }
+  $('xr').innerHTML = html;
+  updateOverall();
+})();
+
+/* ---------- 4b. 实际创建 AR 会话 ----------
+   isSessionSupported 只说明浏览器「认为」支持；真正 requestSession 时仍可能
+   因为缺少 Google Play Services for AR 而失败。两者必须分开验证。
+   requestSession 必须在用户手势里调用，所以放在按钮点击里。 */
+$('ar-try').addEventListener('click', async () => {
+  const out = [];
+  if (!navigator.xr) {
+    $('ar-result').innerHTML = row('结果', badge('navigator.xr 不存在，无法尝试', 'bad'));
+    return;
+  }
+  $('ar-result').innerHTML = row('状态', '正在请求 immersive-ar 会话…（可能会弹出相机权限）');
+  let session = null;
+  try {
+    session = await navigator.xr.requestSession('immersive-ar', {
+      requiredFeatures: ['hit-test'],
+      optionalFeatures: ['local-floor', 'dom-overlay'],
+    });
+    R.arSessionOk = true;
+    const v = session.renderState && session.renderState.baseLayer;
+    out.push(row('requestSession("immersive-ar")', badge('成功', 'ok')));
+    out.push(row('会话模式', (session.mode || '?') + ' / ' + (session.environmentBlendMode || '?')));
+    if (v) out.push(row('渲染缓冲', v.framebufferWidth + ' × ' + v.framebufferHeight));
+    out.push(row('结论', badge('ARCore 真的可用 → 可以走真实 WebXR AR 路线，不必用假 AR', 'ok')));
+  } catch (e) {
+    R.arSessionOk = false;
+    R.arSessionError = (e.name || 'Error') + ': ' + (e.message || '');
+    out.push(row('requestSession("immersive-ar")', badge('失败：' + (e.name || 'Error'), 'bad')));
+    out.push(row('错误信息', (e.message || '（无）')));
+    let why = '';
+    if (e.name === 'NotSupportedError') {
+      why = '设备或浏览器不支持该会话模式。若 isSessionSupported 是 true 而这里失败，' +
+            '最常见的原因是<b>没装 Google Play Services for AR</b>（国行机型常见）。';
+    } else if (e.name === 'NotAllowedError') {
+      why = '被拒绝 —— 通常是相机权限没给，或页面不在用户手势里。请允许相机权限后重试。';
+    } else if (e.name === 'SecurityError') {
+      why = '安全策略拦截 —— 确认是 HTTPS，且不在跨域 iframe 里。';
+    } else {
+      why = '请把这条错误信息发回来。';
+    }
+    out.push(row('可能原因', why));
+  } finally {
+    if (session) { try { await session.end(); } catch (e) { /* ignore */ } }
+    $('ar-result').innerHTML = out.join('');
+    updateOverall();
+  }
+});
+
+/* ---------- 5. 摄像头 ---------- */
+(async () => {
+  let html = '';
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    html += row('getUserMedia', badge('不可用', 'bad'));
+    $('cam').innerHTML = html;
+    return;
+  }
+  html += row('getUserMedia', badge('可用', 'ok'));
+  try {
+    const devs = await navigator.mediaDevices.enumerateDevices();
+    const cams = devs.filter(d => d.kind === 'videoinput');
+    html += row('摄像头数量', String(cams.length));
+  } catch (e) { /* ignore */ }
+
+  html += row('尝试开启后置摄像头', '<span class="live" id="cam-state">请求中…</span>');
+  $('cam').innerHTML = html;
+  try {
+    const s = await navigator.mediaDevices.getUserMedia({
+      audio: false,
+      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }
+    });
+    const tr = s.getVideoTracks()[0];
+    const st = tr.getSettings ? tr.getSettings() : {};
+    const cap = tr.getCapabilities ? tr.getCapabilities() : {};
+    let extra = '';
+    extra += row('实际分辨率', (st.width || '?') + ' × ' + (st.height || '?'));
+    extra += row('帧率', st.frameRate ? st.frameRate.toFixed(0) + ' fps' : '未知');
+    extra += row('对焦模式', st.focusMode || '未知');
+    if (cap.width && cap.width.max) extra += row('最大分辨率', cap.width.max + ' × ' + (cap.height ? cap.height.max : '?'));
+    extra += row('水平视场（估算）', '浏览器不提供 → 需现场用滑杆对位');
+    $('cam').innerHTML = html + extra;
+    R.camRes = (st.width || '?') + 'x' + (st.height || '?');
+    s.getTracks().forEach(t => t.stop());
+  } catch (e) {
+    $('cam').innerHTML = html.replace('<span class="live" id="cam-state">请求中…</span>',
+      badge('失败：' + e.name, 'bad'));
+  }
+  updateOverall();
+})();
+
+/* ---------- 6. 外设 ---------- */
+function periphUpdate() {
+  const gps = navigator.getGamepads ? navigator.getGamepads() : [];
+  const list = [];
+  for (const g of gps) if (g) list.push(g.id + ' [' + g.axes.length + ' 轴]');
+  const gpTxt = list.length ? badge(list.join(' / '), 'ok') : badge('未检测到手柄', 'idle');
+  const btTxt = navigator.bluetooth ? badge('支持 Web Bluetooth', 'ok') : badge('不支持', 'idle');
+  const usbTxt = navigator.usb ? badge('支持 WebUSB', 'ok') : badge('不支持', 'idle');
+  $('periph').innerHTML =
+    row('已连接游戏手柄', gpTxt) +
+    row('Web Bluetooth', btTxt) +
+    row('WebUSB', usbTxt) +
+    row('说明', '<span style="font-size:12px;color:#8fadb5">插上 USB HID 编码器后，此处应出现手柄条目</span>');
+}
+periphUpdate();
+setInterval(periphUpdate, 2000);
+
+/* ---------- 总体结论 ---------- */
+function updateOverall() {
+  const parts = [];
+  if (!R.https) parts.push(badge('非 HTTPS', 'bad'));
+  if (doFired && betaSeen) parts.push(badge('姿态传感器可用', 'ok'));
+  else if (doFired) parts.push(badge('姿态传感器部分可用', 'warn'));
+  else parts.push(badge('姿态传感器未响应', 'warn'));
+  if (absoluteSeen) parts.push(badge('有绝对朝向', 'ok'));
+  else if (doFired) parts.push(badge('无绝对朝向（偏航会漂移）', 'warn'));
+  if (R.arSessionOk === true) parts.push(badge('ARCore 实测可用（能开会话）', 'ok'));
+  else if (R.arSessionOk === false) parts.push(badge('ARCore 开会话失败', 'warn'));
+  else if (R.arSupported) parts.push(badge('ARCore 声称支持（未实测）', 'warn'));
+  else parts.push(badge('ARCore 待确认', 'idle'));
+
+  /* 漂移结果 —— 这才是选型的决定项。
+     ALPHA 冻结时自动改用陀螺仪积分的结果，两者取「可用的那一个」。 */
+  const rA = (R.driftRate === null || R.driftRate === undefined) ? null : Math.abs(R.driftRate);
+  const rG = (R.gyroDriftRate === null || R.gyroDriftRate === undefined) ? null : Math.abs(R.gyroDriftRate);
+  const gyroUsable = rG !== null && !R.gyroFlat;
+  let r = null, srcName = '';
+  if (rA !== null && !R.driftFrozen) { r = rA; srcName = 'ALPHA'; }
+  else if (gyroUsable) { r = rG; srcName = '陀螺仪积分'; }
+  else if (rA !== null) { r = rA; srcName = 'ALPHA'; }
+
+  const alphaFrozenUnresolved = rA !== null && R.driftFrozen && !gyroUsable;
+
+  if (r === null) parts.push(badge('漂移未测', 'idle'));
+  else if (R.driftHidden) parts.push(badge('测试期间页面进过后台', 'bad'));
+  else if (R.driftLowRate) parts.push(badge('事件频率过低', 'bad'));
+  else if (alphaFrozenUnresolved) parts.push(badge('ALPHA 冻结，待旋转响应检查定性', 'warn'));
+  else if (R.driftSuspect && srcName === 'ALPHA') parts.push(badge('漂移结果可疑', 'bad'));
+  else if (r < 0.3) parts.push(badge('漂移可接受（' + srcName + '）', 'ok'));
+  else if (r < 2) parts.push(badge('漂移需滤波（' + srcName + '）', 'warn'));
+  else parts.push(badge('漂移过大（' + srcName + '）', 'bad'));
+
+  /* 给出可执行的建议 —— 按优先级短路，最该先解决的说在最前面 */
+  let advice = '请先完成第 4 节漂移测试（平板静置 60 秒），本页才能给出方案建议。';
+  if (!isMobileLike) {
+    advice = '⚠️ 当前不是移动设备（UA 显示为桌面系统，且没有触屏），不是小米平板6。' +
+             '桌面浏览器的姿态数据多为合成值，本页结论对选型无效，请在<b>平板</b>上重新打开。';
+  } else if (likelyDesktopSiteMode) {
+    advice = '⚠️ 检测到<b>触屏设备</b>，但 UA 是桌面系统 —— 说明 Chrome 开了<b>「桌面版网站」</b>。' +
+             '传感器本身能用，但桌面模式会改变视口尺寸与像素比，影响后续 AR 叠加的对位计算。' +
+             '建议在 Chrome 菜单里<b>关掉「桌面版网站」</b>后重测。';
+  } else if (!browserOk) {
+    advice = '⚠️ 当前浏览器是 <b>' + browser.name + '</b>，不是 Chrome。' +
+             '这类浏览器的 UA 虽然带 "Chrome/xxx"（那只是内核版本），但设备能力常被裁剪——' +
+             '本次实测它在 60 秒内只推送了 ' + (R.driftSamples === undefined ? '极少' : R.driftSamples) +
+             ' 个姿态事件。请改用 <b>Chrome</b> 打开本页重测。';
+  } else if (alphaFrozenUnresolved) {
+    advice = 'ALPHA 在静止的 60 秒里完全没变。这<b>有两种可能</b>，本页无法自行区分：' +
+             '<b>①</b> 传感器确实很好；<b>②</b> 系统在静止时把陀螺仪置于低功耗模式，角速度直接报 0。' +
+             '请先做<b>第 3 节旋转响应检查</b>——缓慢左右转动平板 5 秒：' +
+             '若 ALPHA 有响应，说明传感器正常，这次零漂移可信；若毫无响应，请换 Chrome 重测。';
+  } else if (r === null) {
+    advice = '请先完成第 4 节漂移测试（平板静置 60 秒），本页才能给出方案建议。';
+  } else if (R.driftHidden) {
+    advice = '测试期间页面进入了后台，浏览器会停发传感器事件 → 本次结果无效。' +
+             '请保持页面在前台、屏幕常亮，重测一次。';
+  } else if (R.driftLowRate) {
+    advice = '事件频率仅 ' + R.driftHz + ' Hz（正常应 ≥ 30 Hz），浏览器基本没在推送姿态数据 → ' +
+             '本次结果不可用。请换 <b>Chrome</b> 重测。';
+  } else if (R.driftSuspect && srcName === 'ALPHA') {
+    advice = '最大偏移超过 5°，中途可能碰过平板 —— 这个结果不能用来选型，请重测一次。';
+  } else if (r < 0.3) {
+    advice = '建议方案 A：纯传感器（' + srcName + '）+ One Euro Filter。每分钟重标定一次即可维持贴合。';
+  } else if (r < 2) {
+    advice = '建议方案 B：传感器（' + srcName + '）+ One Euro Filter，并把重标定周期压到 2~3 分钟；' +
+             '或在沙盘边框贴 AprilTag 做周期性校正，把漂移拉回来。';
+  } else {
+    advice = '建议方案 C：放弃纯陀螺仪偏航，改用沙盘边框 AprilTag 视觉定位，或加装 USB HID 编码器直接读角度。';
+  }
+
+  /* ARCore 真的可用时优先走真实 AR —— 比任何「假 AR」都稳 */
+  if (R.arSessionOk === true) {
+    advice = '<b>【优先方案】ARCore 实测可用（能真正创建 immersive-ar 会话）</b>：' +
+             '建议直接走 WebXR 真实 AR 路线 —— ARCore 提供 6DoF 位姿跟踪与平面检测，' +
+             '精度和稳定性都远优于陀螺仪积分，既不需要 AprilTag，也不需要编码器。' +
+             '<br><span style="color:#8fadb5">以下为按传感器实测给出的备选建议：</span><br>' + advice;
+  } else if (R.arSessionOk === false) {
+    advice = '已实测：<b>ARCore 开会话失败</b>（' + (R.arSessionError || '') + '）。' +
+             '若 isSessionSupported 为 true 却开不起来，最常见原因是<b>没装 Google Play Services for AR</b>。' +
+             '<br>' + advice;
+  }
+
+  let cls = 'warn';
+  if (R.https && doFired && betaSeen && absoluteSeen) cls = 'ok';
+  if (!R.https && !doFired) cls = 'bad';
+  if (r !== null && !R.driftSuspect && !R.driftFrozen && !R.driftLowRate && !R.driftHidden) {
+    cls = r < 0.3 ? 'ok' : (r < 2 ? 'warn' : 'bad');
+  }
+  if (!isMobileLike || !browserOk || R.driftLowRate || R.driftHidden) cls = 'bad';
+  if (likelyDesktopSiteMode) cls = 'warn';   /* 能用，只是对位会受影响 */
+  if (alphaFrozenUnresolved) cls = 'warn';   /* 未必是坏事，需要旋转检查定性 */
+  const box = $('overall');
+  box.className = 'verdict ' + cls;
+  box.innerHTML = '<b>总体判定：</b><br>' + parts.join(' ') +
+    '<div style="margin-top:8px;font-size:12.5px;color:#8fadb5">' + advice + '</div>';
+}
+setInterval(updateOverall, 1500);
+
+/* ---------- 7. 导出 ---------- */
+$('export').addEventListener('click', () => {
+  const num = v => (v === undefined || v === null ? null : Number(v));
+  const rep = {
+    时间: new Date().toLocaleString('zh-CN'),
+    设备UA: R.ua,
+    /* 确认报告确实来自目标设备 + 可用浏览器 */
+    是Android设备: isAndroid,
+    触屏设备: isTouchDevice,
+    疑似桌面版网站模式: likelyDesktopSiteMode,
+    疑似小米设备: isXiaomi,
+    浏览器: browser.name + (browser.version ? ' ' + browser.version : ''),
+    浏览器是否适合本测试: browserOk,
+    HTTPS安全上下文: R.https,
+    屏幕: R.screen,
+    视口: R.viewport,
+
+    姿态事件已触发: doFired,
+    姿态事件累计次数: evTotal,
+    其中ALPHA非null次数: evAlphaNonNull,
+    BETA有值: betaSeen,
+    GAMMA有值: gammaSeen,
+    有绝对朝向: absoluteSeen,
+
+    /* 三条偏航来源各自的事件量 —— 判断哪一路是活的 */
+    来源1_相对偏航事件数: relTotal,
+    来源2_绝对偏航事件数: absTotal,
+    来源3_原始陀螺仪事件数: motTotal,
+    原始陀螺仪可用: hasDME,
+
+    /* 旋转响应检查（区分「传感器真好」和「静止时低功耗报0」） */
+    旋转检查是否做过: R.respSamples === undefined ? null : true,
+    旋转检查样本数: num(R.respSamples),
+    旋转时ALPHA变化范围_度: num(R.respAlphaRange),
+    旋转时BETA变化范围_度: num(R.respBetaRange),
+    旋转时陀螺仪角速度峰值_度每秒: num(R.respRatePeak),
+    旋转时ALPHA有响应: R.respAlphaResponsive === undefined ? null : R.respAlphaResponsive,
+    旋转时陀螺仪有响应: R.respGyroResponsive === undefined ? null : R.respGyroResponsive,
+
+    /* ↓ 决定选型的关键几项 */
+    漂移测试是否跑满60秒: R.driftDone === undefined ? null : R.driftDone,
+    漂移测试时长秒: num(R.driftSeconds),
+    漂移率_ALPHA_度每分钟: num(R.driftRate),
+    漂移净位移_度: num(R.driftNet),
+    漂移最大偏移_度: num(R.driftMax),
+    漂移期间采样数: num(R.driftSamples),
+    漂移期间事件频率Hz: num(R.driftHz),
+    事件频率过低_数据不可用: R.driftLowRate === undefined ? null : R.driftLowRate,
+    测试期间页面进过后台: R.driftHidden === undefined ? null : R.driftHidden,
+    漂移期间ALPHA变化范围_度: num(R.driftAlphaRange),
+    ALPHA静止期间恒定: R.driftFrozen === undefined ? null : R.driftFrozen,
+    漂移结果可疑_中途可能被移动: R.driftSuspect === undefined ? null : R.driftSuspect,
+
+    /* 陀螺仪积分 —— 比 ALPHA 更可信的偏航漂移 */
+    陀螺仪积分采样数: num(R.gyroSamples),
+    陀螺仪积分频率Hz: num(R.gyroHz),
+    陀螺仪积分偏航_度: num(R.gyroYaw),
+    陀螺仪积分漂移率_度每分钟: num(R.gyroDriftRate),
+    陀螺仪角速度均值_度每秒: num(R.gyroRateMean),
+    陀螺仪角速度峰值_度每秒: num(R.gyroRatePeak),
+    陀螺仪角速度全程接近0: R.gyroFlat === undefined ? null : R.gyroFlat,
+
+    WebXR接口存在: R.xrPresent === undefined ? null : R.xrPresent,
+    WebXR查询错误: R.xrError || null,
+    ARCore声称支持: R.arSupported === undefined ? null : R.arSupported,
+    AR会话实测成功: R.arSessionOk === undefined ? null : R.arSessionOk,
+    AR会话错误: R.arSessionError || null,
+    摄像头分辨率: R.camRes || null,
+    WebBluetooth: !!navigator.bluetooth,
+    WebUSB: !!navigator.usb
+  };
+  $('report').textContent = JSON.stringify(rep, null, 2);
+});
+$('copy').addEventListener('click', async () => {
+  const t = $('report').textContent;
+  try {
+    await navigator.clipboard.writeText(t);
+    $('copy').textContent = '已复制 ✓';
+  } catch (e) {
+    $('copy').textContent = '复制失败，请长按上方文本手动复制';
+  }
+  setTimeout(() => { $('copy').textContent = '复制到剪贴板'; }, 2000);
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,28 @@
+{
+  "source": "Mapzen Terrain Tiles (Terrarium) via AWS Open Data",
+  "source_url": "https://registry.opendata.aws/terrain-tiles/",
+  "boundary_source": "geoBoundaries gbOpen CHN ADM1, Hunan Province",
+  "boundary_url": "https://www.geoboundaries.org/api/current/gbOpen/CHN/ADM1/",
+  "zoom": 9,
+  "tile_count": 90,
+  "size_pixels": [
+    2027,
+    2318
+  ],
+  "extent_lonlat": [
+    108.83291055300008,
+    24.674874366000026,
+    114.3975584600001,
+    30.316498973000037
+  ],
+  "projection": "Web Mercator / EPSG:3857",
+  "pixel_origin_global": [
+    105160,
+    53943
+  ],
+  "elevation_min_m": 0.0,
+  "elevation_max_m": 2076.0,
+  "negative_source_spikes_replaced": 236,
+  "heightmap_decode_m": "png_value / 65535 * (elevation_max_m - elevation_min_m) + elevation_min_m",
+  "outside_province": "Use the separate mask PNG; zero in heightmap alone is ambiguous"
+}

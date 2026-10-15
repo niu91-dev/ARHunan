@@ -1,0 +1,10 @@
+{
+  "name": "hunan-device-check",
+  "compatibility_date": "2026-09-29",
+  "workers_dev": true,
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application"
+  }
+}
