@@ -20,7 +20,7 @@ import * as THREE from 'three';
 import { SITES, GEO_BOUNDS } from './sites.js';
 import { createTerrainScan } from './scan-surface.js';
 import { setupCameraPreview } from './camera-preview.js';
-import { createArCamera, OCCLUSION_THRESHOLDS } from './holo-ar.js?v=20261015-rollfix2';
+import { createArCamera, OCCLUSION_THRESHOLDS } from './holo-ar.js?v=20261015-fovgimbal1';
 
 const scanReview = new URLSearchParams(location.search).get('review') === 'scan';
 document.body.classList.toggle('scan-review', scanReview);
@@ -34,6 +34,7 @@ const BASE_VERTICAL_FOV = 48;
 const TERRAIN_ASPECT = 5.5 / 4.8;
 const DWELL_SECONDS = 0.5;
 const clock = new THREE.Clock();
+const UP_Y = new THREE.Vector3(0, 1, 0);
 let terrain, scanSurface, maskPixels, maskWidth, maskHeight, uniforms;
 let clickCount = 0;
 let nextIdle = 0;
@@ -48,27 +49,37 @@ let storyCloseTimer;
 let storyStart = 0;
 let introPages = [];
 
-/* ---------- 相机 AR 的参数表（holo-ar.js 每帧读它）----------
-   ★ 2026-10-14 起改为【现场实测参数】（旧页面 ar-gyro-demo 同款）：
-     圆形沙盘外径 φ2800、平板离地 1.30 m ⇒ 相机高出沙盘面 0.56 m、
-     平板距沙盘边缘 0.60 m ⇒ 距中心 2.00 m、后摄水平视场 65°。
-     （参考项目的演示值是 4.8 m 盘 / 4.4 m 距 / 1.8 m 高 / zoom 2.0 ≈ 35° 水平视场，
-     已不用于本页默认值；想要参考几何就把这些值改回去。） */
+/* ---------- 相机 AR 的参数表（基于现场实物实拍视觉纠偏）----------
+   ★ 2026-10-15 依据实装固定支架 Pad 实拍反解校正：
+     1. 沙盘为 φ2800 mm 正圆台面，实际制作的湖南起伏地形收容于圆内（长宽约 2.45m × 2.15m）；
+     2. 地形相对圆盘中心向南微移 12 cm、向东微调 4 cm，使洞庭湖与南岭对称落入圆周；
+     3. 支架离地高度实测高出台面 0.58 m，距圆心水平距离 1.93 m（离外沿约 0.53 m）；
+     4. 支架夹具初始机械倾角使相机光学基准俯角为 20.2°；后摄水平视场 65°。 */
 const P = {
-  tableW: 2.80,                                 // 沙盘宽度（m）= 现场实测圆形沙盘直径
-  tableD: 2.80 * TERRAIN_ASPECT,                // 沙盘深度（m）
-  camHeight: 0.56,                              // 相机高出沙盘面的高度（m）= 1.30 − 0.74
-  camDist: 2.00,                                // 相机离沙盘中心的距离（m）
+  tableW: 1.88,                                 // 实际湖南地形东西向物理跨度（1.88 m，与实物沙盘东西跨度一致）
+  tableD: 2.22,                                 // 实际湖南地形南北向物理跨度（2.22 m，与实物沙盘南北跨度一致）
+  shiftX: 0.00,                                 // 东西向横向居中（0 cm）
+  shiftZ: 0.38,                                 // 沿视线向南平移 38 cm（匹配实物沙盘在圆盘中的真实质心）
+  camHeight: 0.58,                              // 相机离沙盘台面高度（实测 0.58 m）
+  camDist: 1.93,                                // 相机离沙盘中心水平距离（实测 1.93 m）
   lateral: 0,                                   // 沿边左右位置（m）
-  /* 镜头：后摄水平视场 65°。参考链路是 baseHorizontal / zoom，
-     zoom = baseHorizontal(≈70.9° @16:10) / 65 ≈ 1.09，取滑杆步进 1.1 → ≈64.5°。 */
-  zoom: 1.1,
+  nominalPitch: 20.2,                           // 支架实物初始俯角（20.2°）
+  /* 镜头：zoom 设为 1.0 消除旋转角速度差异，
+     使虚拟边界与真实摄像头背景物体在旋转时保持 1:1 同步不拉扯。 */
+  zoom: 1.0,
   smoothMs: 140,                                // 姿态平滑时间常数（ms），0 = 直通
   cull: true,                                   // 视野裁剪总开关
   occlusion: false,                             // 遮挡剔除开关（默认关闭，保持全息地标稳定常驻，消除山脊闪烁）
   heightAtUv: () => 0,                          // 地形高度（buildTerrain 里填）
   meshYAt: null,                                // 网格高度（诊断用第二个独立高度源）
-  gimbal: { on: false, drive: 'manual', yawDeg: 0, pitchDeg: 0 },
+  gimbal: {
+    on: false,
+    drive: 'gyro',
+    off: new THREE.Vector3(-0.10, 0.06, 0.02),
+    arm: 0.11,
+    yawDeg: 0,
+    pitchDeg: 0,
+  },
 };
 
 const PHOTO_SETS = {
@@ -122,10 +133,22 @@ function geoUv(lon, lat) {
   );
 }
 
+  /* ---------- 空间朝向变换（顺时针旋转90°，严格匹配现场物理沙盘：右北、左南、上西、下东）---------- */
+  function uvToWorld(u, v, y = 0.0) {
+    const p = new THREE.Vector3((u - 0.5) * P.tableW, y, (0.5 - v) * P.tableD);
+    p.applyAxisAngle(UP_Y, -Math.PI / 2);
+    p.add(new THREE.Vector3(P.shiftX || 0, 0, P.shiftZ || 0));
+    return p;
+  }
+
 /* 世界坐标 → 地形 uv。与 holo-ar.js 里那份是同一个映射，这里再写一份是为了
    让 buildSites / 诊断出口不必依赖 ar 实例（加载顺序更简单）。 */
 function worldToUv(x, z, out) {
-  return (out || new THREE.Vector2()).set(x / P.tableW + 0.5, 0.5 - z / P.tableD);
+    const p = new THREE.Vector3(x - (P.shiftX || 0), 0, z - (P.shiftZ || 0));
+    p.applyAxisAngle(UP_Y, +Math.PI / 2);
+    const u = p.x / P.tableW + 0.5;
+    const v = 0.5 - p.z / P.tableD;
+    return (out || new THREE.Vector2()).set(u, v);
 }
 
 function textElement(tag, className, value) {
@@ -467,7 +490,8 @@ function buildGroundBeacon(uv,index) {
   for(let i=0;i<positions.count;i++){
     const localX=positions.getX(i),localY=positions.getY(i);
     const sample=new THREE.Vector2(uv.x+localX/P.tableW,uv.y+localY/P.tableD);
-    positions.setXYZ(i,(sample.x-.5)*P.tableW,terrainHeightAt(sample)+.004,(.5-sample.y)*P.tableD);
+      const worldP = uvToWorld(sample.x, sample.y, terrainHeightAt(sample) + 0.004);
+      positions.setXYZ(i, worldP.x, worldP.y, worldP.z);
   }
   geometry.computeBoundingSphere();
   const material=new THREE.ShaderMaterial({
@@ -498,7 +522,8 @@ function buildGroundBeacon(uv,index) {
       gl_FragColor=vec4(mix(vec3(.65,1.05,1.2),vec3(1.3,1.03,.53),uSelected),min(alpha*uEffectGain,.8));}`
   });
   const beam=new THREE.Mesh(new THREE.CylinderGeometry(.0025,.008,.24,12,1,true),beamMaterial);
-  beam.position.set((uv.x-.5)*P.tableW,terrainHeightAt(uv)+.124,(.5-uv.y)*P.tableD);
+    const centerWorld = uvToWorld(uv.x, uv.y, terrainHeightAt(uv) + 0.124);
+    beam.position.copy(centerWorld);
   beam.renderOrder=5;mesh.add(beam);scene.add(mesh);return mesh;
 }
 
@@ -524,7 +549,7 @@ function buildSites() {
   const list = document.getElementById('site-list');
   siteMarkers = SITES.map((site, index) => {
     const uv = geoUv(site.lon, site.lat);
-    const groundPoint = new THREE.Vector3((uv.x - 0.5) * P.tableW, terrainHeightAt(uv) + .004, (0.5 - uv.y) * P.tableD);
+    const groundPoint = uvToWorld(uv.x, uv.y, terrainHeightAt(uv) + 0.004);
     const point = groundPoint.clone(); point.y += .27;
     const groundBeacon = buildGroundBeacon(uv, index);
     const stem = document.createElementNS('http://www.w3.org/2000/svg','path');
@@ -692,15 +717,18 @@ function buildTerrain(heightGrid, meta, colorTexture, maskTexture) {
   const vertices = geometry.attributes.position;
   for (let i = 0; i < vertices.count; i++) {
     const elevation = Math.max(0, heightGrid[i]);
-    vertices.setY(i, 0.025 + elevation / 2076 * 0.29 * (P.tableW / 4.8));
+      vertices.setY(i, 0.025 + elevation / 2076 * 0.22 * (P.tableW / 4.8));
   }
   vertices.needsUpdate = true;
   geometry.computeVertexNormals();
   colorTexture.colorSpace = THREE.SRGBColorSpace;
   colorTexture.anisotropy = Math.min(renderer.capabilities.getMaxAnisotropy(), 8);
-  terrain = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({ map: colorTexture, color: 0xa3b4a8, alphaTest: 0.5, roughness: 0.96, metalness: 0.0, side: THREE.DoubleSide }));
+    terrain = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({ map: colorTexture, color: 0xffffff, alphaTest: 0.5, roughness: 0.90, metalness: 0.0, side: THREE.DoubleSide }));
   terrain.name = 'HunanTerrain';
+    terrain.rotation.y = -Math.PI / 2;
+    terrain.position.set(P.shiftX || 0, 0, P.shiftZ || 0);
   scene.add(terrain);
+    referenceObjects.push(terrain);
 
   uniforms = {
     uTime: { value: 0 },
@@ -742,7 +770,7 @@ function buildTerrain(heightGrid, meta, colorTexture, maskTexture) {
     /* ★ 起伏按沙盘尺寸比例缩放（对齐旧页面的 reliefM = 0.29×tableW/4.8）：
        4.8 m 参考盘上 2076 m → 0.29 m；2.8 m 现场盘按比例降到 0.169 m，
        山体高径比与现场实物一致（≈直径 6%）。不缩放的话小沙盘上的山会偏高变陡。 */
-    return 0.025 + height / 2076 * 0.29 * (P.tableW / 4.8);
+      return 0.025 + height / 2076 * 0.22 * (P.tableW / 4.8);
   }
   terrainHeightAt = heightAt;
   P.heightAtUv = heightAt;
@@ -757,7 +785,11 @@ function buildTerrain(heightGrid, meta, colorTexture, maskTexture) {
     return hit.length ? hit[0].point.y : null;
   };
 
-  scanSurface = createTerrainScan({ THREE, scene, uniforms, heightAt, maskAt, width: P.tableW, depth: P.tableD });
+  scanSurface = createTerrainScan({ THREE, scene: scene, uniforms, heightAt, maskAt, width: P.tableW, depth: P.tableD });
+  scanSurface.points.rotation.y = -Math.PI / 2;
+  scanSurface.points.position.set(P.shiftX || 0, 0, P.shiftZ || 0);
+  scanSurface.links.rotation.y = -Math.PI / 2;
+  scanSurface.links.position.set(P.shiftX || 0, 0, P.shiftZ || 0);
 }
 
 function buildEnvironment() {
@@ -771,6 +803,27 @@ function buildEnvironment() {
   const fill = new THREE.DirectionalLight(0x50baa3, 0.7);
   fill.position.set(3, 4, -5);
   scene.add(fill);
+
+
+
+    /* 圆形沙盘边界线（外径 φ2800 + 内径 φ2750，与实物台面 1:1 对齐） */
+    function makeCircleLine(radius, color, opacity) {
+      const pts = [];
+      for (let i = 0; i <= 128; i++) {
+        const t = (i / 128) * Math.PI * 2;
+        pts.push(new THREE.Vector3(Math.cos(t) * radius, 0.003, Math.sin(t) * radius));
+      }
+      const geo = new THREE.BufferGeometry().setFromPoints(pts);
+      const mat = new THREE.LineBasicMaterial({ color, transparent: true, opacity });
+      const line = new THREE.Line(geo, mat);
+      line.name = `TableCircle_${radius}`;
+      return line;
+    }
+    const circleOuter = makeCircleLine(1.40, 0x50baa3, 0.65);
+    const circleInner = makeCircleLine(1.375, 0x50baa3, 0.35);
+    scene.add(circleOuter);
+    scene.add(circleInner);
+    referenceObjects.push(circleOuter, circleInner);
 }
 const referenceObjects = [];
 
@@ -784,14 +837,45 @@ function updateLens() {
   if (!camera) return;
   const baseHorizontal = 2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(BASE_VERTICAL_FOV) / 2) * camera.aspect);
   const targetHorizontal = baseHorizontal / P.zoom;
-  camera.fov = THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(targetHorizontal / 2) / camera.aspect));
+
+  // 摄像头画幅适配：如果摄像头正在运行，根据其真实分辨率与当前视口宽高比，计算 object-fit: cover 裁切比例
+  const video = document.getElementById('camera-feed');
+  let aspectScaleX = 1.0;
+  let hasActiveVideo = false;
+  if (video && !video.hidden && video.videoWidth && video.videoHeight) {
+    hasActiveVideo = true;
+    const videoAspect = video.videoWidth / video.videoHeight;
+    const screenAspect = camera.aspect;
+    if (videoAspect > screenAspect) {
+      // 视频（如 16:9）比视口（如 16:10）更宽：object-fit: cover 裁切左右，水平视场角按比例收缩
+      aspectScaleX = screenAspect / videoAspect;
+    }
+  }
+
+  const tanHalfTargetH = Math.tan(targetHorizontal / 2);
+  const tanHalfEffectiveH = tanHalfTargetH * aspectScaleX;
+  const effectiveHorizontal = 2 * Math.atan(tanHalfEffectiveH);
+
+  // Three.js 的 camera.fov 是垂直视场角，由等效水平视场角推导
+  camera.fov = THREE.MathUtils.radToDeg(2 * Math.atan(tanHalfEffectiveH / camera.aspect));
   camera.updateProjectionMatrix();
+
   const zv = document.getElementById('zoom-value');
-  if (zv) zv.textContent = `${P.zoom.toFixed(1)}×`;
+  const hFovDeg = Number(THREE.MathUtils.radToDeg(effectiveHorizontal).toFixed(1));
+  const nominalHFovDeg = Number(THREE.MathUtils.radToDeg(targetHorizontal).toFixed(1));
+  if (zv) {
+    if (hasActiveVideo && aspectScaleX < 0.999) {
+      zv.textContent = `${P.zoom.toFixed(2)}× (等效 ${hFovDeg}° / 标称 ${nominalHFovDeg}°)`;
+    } else {
+      zv.textContent = `${P.zoom.toFixed(2)}× (${hFovDeg}°)`;
+    }
+  }
   R.zoom = P.zoom;
-  R.hFovDeg = Number(THREE.MathUtils.radToDeg(targetHorizontal).toFixed(2));
+  R.hFovDeg = hFovDeg;
+  R.nominalHFovDeg = nominalHFovDeg;
   R.vFovDeg = Number(camera.fov.toFixed(2));
   R.aspect = Number(camera.aspect.toFixed(4));
+  R.videoAspectScale = aspectScaleX;
 }
 
 function resize() {
@@ -983,9 +1067,12 @@ function syncArStatus() {
   setSwitch('ar-cull', P.cull);
   setSwitch('ar-occl', P.occlusion);
   setSwitch('ar-fusion', ar.debug.motionFusion);
+  setSwitch('gimbal-toggle', P.gimbal ? P.gimbal.on : false);
 }
 
+
 function setupArControls() {
+
   const gyroBtn = document.getElementById('gyro-toggle');
   if (gyroBtn) {
     gyroBtn.addEventListener('click', async () => {
@@ -1007,6 +1094,30 @@ function setupArControls() {
   document.getElementById('ar-cull').addEventListener('change', e => { P.cull = e.target.checked; syncArStatus(); });
   document.getElementById('ar-occl').addEventListener('change', e => { P.occlusion = e.target.checked; syncArStatus(); });
   document.getElementById('ar-fusion').addEventListener('change', e => { ar.setMotionFusion(e.target.checked); syncArStatus(); });
+  const gt = document.getElementById('gimbal-toggle');
+  const gar = document.getElementById('gimbal-arm');
+  const garRow = document.getElementById('gimbal-arm-row');
+  const garVal = document.getElementById('gimbal-arm-value');
+  if (gt) {
+    gt.addEventListener('change', e => {
+      P.gimbal.on = e.target.checked;
+      if (gar) gar.style.display = P.gimbal.on ? 'block' : 'none';
+      if (garRow) garRow.style.display = P.gimbal.on ? 'flex' : 'none';
+      ar.syncGimbalPivot();
+      noteCameraMotion();
+      syncArStatus();
+    });
+  }
+  if (gar) {
+    gar.addEventListener('input', e => {
+      const arm = Number(e.target.value);
+      P.gimbal.arm = arm;
+      P.gimbal.off.set(-arm * 0.9, arm * 0.5, arm * 0.2);
+      if (garVal) garVal.textContent = `${arm.toFixed(2)} m`;
+      ar.syncGimbalPivot();
+      noteCameraMotion();
+    });
+  }
   const gate = document.getElementById('ar-gate');
   if (gate) {
     gate.addEventListener('click', async () => {
@@ -1062,12 +1173,50 @@ function setupPanelDrawer() {
 /* ============================================================================
    标定设置持久化（本地保存与恢复）
    ============================================================================ */
-const SETTINGS_STORAGE_KEY = 'hunan_holo_ar_settings_v1';
+  const SETTINGS_STORAGE_KEY = 'hunan_holo_ar_settings_v1';
+
+  /* 3D 边界下切断崖裙边（匹配实物沙盘四周 40~60mm 高的立体岩土剖面） */
+  function buildBoundarySkirt(uvList) {
+    const positions = [];
+    const uvs = [];
+    const N = uvList.length;
+    for (let i = 0; i < N; i++) {
+      const nextIdx = (i + 1) % N;
+      const [u0, v0] = uvList[i];
+      const [u1, v1] = uvList[nextIdx];
+      const pTop0 = uvToWorld(u0, v0, terrainHeightAt({ x: u0, y: v0 }));
+      const pTop1 = uvToWorld(u1, v1, terrainHeightAt({ x: u1, y: v1 }));
+      const yBottom = 0.002;
+      positions.push(
+        pTop0.x, pTop0.y, pTop0.z,  pTop0.x, yBottom, pTop0.z,  pTop1.x, yBottom, pTop1.z,
+        pTop0.x, pTop0.y, pTop0.z,  pTop1.x, yBottom, pTop1.z,  pTop1.x, pTop1.y, pTop1.z
+      );
+      uvs.push(
+        u0, v0,  u0, 0.0,  u1, 0.0,
+        u0, v0,  u1, 0.0,  u1, v1
+      );
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+    geo.computeVertexNormals();
+    const skirtMat = new THREE.MeshStandardMaterial({
+      color: 0x826c54, // 温暖的黄褐岩土层剖面质感，与实物切面匹配
+      roughness: 0.94,
+      metalness: 0.04,
+      side: THREE.DoubleSide
+    });
+    const skirt = new THREE.Mesh(geo, skirtMat);
+    skirt.name = 'HunanBoundarySkirt';
+    scene.add(skirt);
+    referenceObjects.push(skirt);
+    return skirt;
+  }
 
 const DEFAULT_SETTINGS = {
-  camHeight: 0.56,
-  camDist: 2.00,
-  zoom: 1.1,
+    camHeight: 0.58,
+    camDist: 1.93,
+    zoom: 1.0,
   lateral: 0.0,
   idle: true,
   cull: true,
@@ -1117,6 +1266,22 @@ function applySettingsToUI(s) {
     P.occlusion = !!s.occlusion;
     setSwitch('ar-occl', P.occlusion);
   }
+  if (s.gimbalOn !== undefined && P.gimbal) {
+    P.gimbal.on = !!s.gimbalOn;
+    setSwitch('gimbal-toggle', P.gimbal.on);
+    const gar = document.getElementById('gimbal-arm');
+    const garRow = document.getElementById('gimbal-arm-row');
+    if (gar) gar.style.display = P.gimbal.on ? 'block' : 'none';
+    if (garRow) garRow.style.display = P.gimbal.on ? 'flex' : 'none';
+  }
+  if (s.gimbalArm !== undefined && P.gimbal) {
+    P.gimbal.arm = Number(s.gimbalArm);
+    P.gimbal.off.set(-P.gimbal.arm * 0.9, P.gimbal.arm * 0.5, P.gimbal.arm * 0.2);
+    const gar = document.getElementById('gimbal-arm');
+    const garVal = document.getElementById('gimbal-arm-value');
+    if (gar) gar.value = P.gimbal.arm;
+    if (garVal) garVal.textContent = `${P.gimbal.arm.toFixed(2)} m`;
+  }
   syncArStatus();
 }
 
@@ -1146,6 +1311,8 @@ function setupSettingsPersistence() {
       idle: settings.idle,
       cull: P.cull,
       occlusion: P.occlusion,
+      gimbalOn: P.gimbal ? P.gimbal.on : false,
+      gimbalArm: P.gimbal ? P.gimbal.arm : 0.11,
       savedAt: new Date().toISOString(),
     };
     try {
@@ -1203,7 +1370,7 @@ function updateHud(now) {
   set('tel-drift', ar.staticDriftTxt());
   /* 支架示意图里的小方块跟着安装高度动 —— 参考项目也有这个反馈 */
   const padIcon = document.getElementById('pad-icon');
-  if (padIcon) padIcon.style.transform = `translateY(${-((P.camHeight - 0.56) * 12)}px)`;
+    if (padIcon) padIcon.style.transform = `translateY(${-((P.camHeight - 0.58) * 12)}px)`;
   const tel = document.getElementById('ar-telemetry');
   if (tel) tel.classList.toggle('is-warn', !d.aligned && !ar.isManualLook());
   syncArStatus();
@@ -1265,12 +1432,13 @@ async function load() {
   try {
     buildEnvironment();
     const textureLoader = new THREE.TextureLoader();
-    const [meta, buffer, color, maskTexture, maskImage] = await Promise.all([
+      const [meta, buffer, color, maskTexture, maskImage, boundaryUvs] = await Promise.all([
       fetch('./assets/terrain-meta.json').then(r => r.json()),
       fetch('./assets/terrain-height.f32').then(r => r.arrayBuffer()),
       textureLoader.loadAsync('./assets/terrain-color.png'),
       textureLoader.loadAsync('./assets/terrain-mask.png'),
       new Promise((resolve, reject) => { const image = new Image(); image.onload = () => resolve(image); image.onerror = reject; image.src = './assets/terrain-mask.png'; }),
+        fetch('./assets/province-boundary.json').then(r => r.json()).catch(() => null),
     ]);
     const heightGrid = new Float32Array(buffer);
     if (heightGrid.length !== meta.width * meta.height) throw new Error('地形网格尺寸与数据不匹配');
@@ -1281,6 +1449,9 @@ async function load() {
     maskPixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
     maskWidth = canvas.width; maskHeight = canvas.height;
     buildTerrain(heightGrid, meta, color, maskTexture);
+      if (boundaryUvs && boundaryUvs.length > 2) {
+        buildBoundarySkirt(boundaryUvs);
+      }
     buildSites();
     /* 默认开启陀螺仪跟随与真实姿态绑定：
        有传感器的平板即开即用；桌面环境 1.5s 无数据后自动降级为手动拖拽。 */
@@ -1297,6 +1468,11 @@ async function load() {
       }
     }, 1500);
     ar.syncGimbalPivot();
+    const feed = document.getElementById('camera-feed');
+    if (feed) {
+      feed.addEventListener('loadedmetadata', () => updateLens());
+      feed.addEventListener('playing', () => updateLens());
+    }
     resize();
     new ResizeObserver(resize).observe(sceneHost);
     setupControls();
@@ -1309,6 +1485,7 @@ async function load() {
       onCameraChange(active) {
         scene.background = null;
         renderer.setClearColor(0x000000, 0);
+        updateLens();
       },
       onReferenceChange(visible) {
         /* 模型开关仅控制地形网格显隐 */

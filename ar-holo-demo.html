@@ -167,7 +167,7 @@
       <div id="site-markers" class="site-markers" aria-label="地形地点锚点"></div>
       <div id="site-story" class="site-story" aria-live="polite"><svg class="story-links" aria-hidden="true"></svg><div class="story-cards"></div></div>
       <div class="stage-top">
-        <div class="brand"><span class="brand-mark"></span><div><strong>HUNAN / TERRAIN LAB</strong><small>物理沙盘 · Pad 观察位模拟</small></div></div>
+          <div class="brand"><span class="brand-mark"></span><div><strong>HUNAN / TERRAIN LAB</strong><small>物理沙盘 · Pad 观察位模拟 <span style="margin-left:6px;padding:1px 6px;border-radius:3px;background:rgba(20,52,42,0.85);border:1px solid #3f8b73;color:#8bf0cc;font-size:10px">方位：上西·下东·左南·右北</span></small></div></div>
         <div class="stage-top-right">
           <div class="live"><span></span> LIVE VIEW</div>
           <button id="btn-open-panel" class="ar-btn-settings" type="button" aria-label="打开设置面板"><span class="gear-icon">⚙</span><span>设置</span></button>
@@ -203,12 +203,13 @@
       <section class="control-section">
         <div class="section-title"><span>01</span><h2>支架位置</h2></div>
         <div class="rail-diagram" aria-hidden="true"><div class="rail-map">地形沙盘</div><div class="rail-line"></div><div id="pad-icon" class="pad-icon"></div><span class="rail-caption">边缘支架 / PAD</span></div>
-        <label class="slider-label" for="height"><span>安装高度</span><output id="height-value">0.56 m</output></label>
-        <input id="height" type="range" min="0.4" max="2.5" step="0.02" value="0.56">
-        <label class="slider-label" for="distance"><span>离中心距离</span><output id="distance-value">2.0 m</output></label>
-        <input id="distance" type="range" min="1.2" max="4.5" step="0.05" value="2.0">
-        <label class="slider-label" for="zoom"><span>镜头缩放</span><output id="zoom-value">1.1×</output></label>
-        <input id="zoom" type="range" min="0.8" max="3.5" step="0.05" value="1.1">
+          <label class="slider-label" for="height"><span>安装高度</span><output id="height-value">0.58 m</output></label>
+          <input id="height" type="range" min="0.3" max="2.0" step="0.01" value="0.58">
+          <label class="slider-label" for="distance"><span>离中心距离</span><output id="distance-value">1.93 m</output></label>
+          <input id="distance" type="range" min="1.0" max="3.5" step="0.01" value="1.93">
+          <label class="slider-label" for="zoom"><span>镜头缩放 (FOV)</span><output id="zoom-value">1.00×</output></label>
+          <input id="zoom" type="range" min="0.8" max="2.5" step="0.01" value="1.00">
+        <p class="hint-line" style="margin:2px 0 10px;font-size:10px;color:#79978d">已开启摄像头 16:9 画幅自动适配；微调缩放可校准旋转边缘吻合度</p>
         <label class="slider-label" for="lateral"><span>沿边左右位置</span><output id="lateral-value">0.0 m</output></label>
         <input id="lateral" type="range" min="-1.4" max="1.4" step="0.05" value="0">
         <div class="save-actions" style="display:flex;gap:8px;margin-top:16px">
@@ -247,6 +248,14 @@
           <div><strong>高频融合</strong><small>用 devicemotion 补足低频</small></div>
           <label class="switch"><input id="ar-fusion" type="checkbox" checked><span></span></label>
         </div>
+        <div class="toggle-row" style="margin-top:10px">
+          <div><strong>旋转偏心补偿</strong><small>补偿镜头偏离支架中轴的圆弧平移（防旋转脱节）</small></div>
+          <label class="switch"><input id="gimbal-toggle" type="checkbox"><span></span></label>
+        </div>
+        <div id="gimbal-arm-row" class="slider-label" style="display:none;margin-top:8px">
+          <span>镜头偏心臂长</span><output id="gimbal-arm-value">0.11 m</output>
+        </div>
+        <input id="gimbal-arm" type="range" min="0.0" max="0.30" step="0.01" value="0.11" style="display:none">
         <button id="gyro-toggle" hidden></button>
         <button id="camera-toggle" hidden></button>
         <button id="ar-reset-view" type="button" style="display:none"></button>
@@ -265,6 +274,6 @@
     </aside>
   </main>
   <div id="loading" class="on">正在加载湖南地形数据…</div>
-  <script type="module" src="./holo-app.js?v=20261015-rollfix2"></script>
+  <script type="module" src="./holo-app.js?v=20261015-rot90cw"></script>
 </body>
 </html>

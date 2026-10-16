@@ -388,6 +388,9 @@ export function createArCamera({ camera, params, hooks = {} }) {
   }
   function syncGimbalPivot() {
     const P = params();
+    if (P && P.gimbal && P.gimbal.off) {
+      GIMBAL.off.copy(P.gimbal.off);
+    }
     GIMBAL.pivot.copy(nominalPosition(_gv)).sub(GIMBAL.off);
   }
 
@@ -406,6 +409,7 @@ export function createArCamera({ camera, params, hooks = {} }) {
   /* drive='gyro'：用陀螺仪姿态增量推位置。对齐（或手动标定）时刻记下基准。 */
   let gyroPosRef = null;
   function captureGyroPosRef() {
+    syncGimbalPivot();
     gyroPosRef = { r0: camera.position.clone().sub(GIMBAL.pivot), q0: camera.quaternion.clone() };
     return { r0: { x: gyroPosRef.r0.x, y: gyroPosRef.r0.y, z: gyroPosRef.r0.z } };
   }
@@ -439,7 +443,10 @@ export function createArCamera({ camera, params, hooks = {} }) {
     const eye = nominalPosition();
     const horiz = Math.hypot(eye.x, eye.z);
     const baseYaw = Math.atan2(-eye.x, -eye.z);
-    const basePitch = THREE.MathUtils.radToDeg(Math.atan2(eye.y, horiz));
+    const P = params();
+    const basePitch = (P && typeof P.nominalPitch === 'number')
+      ? P.nominalPitch
+      : THREE.MathUtils.radToDeg(Math.atan2(eye.y, horiz));
     const yaw = baseYaw + THREE.MathUtils.degToRad(yawDeg);
     const pitch = THREE.MathUtils.degToRad(pitchDeg === null ? basePitch : pitchDeg);
     const dir = new THREE.Vector3(
@@ -463,7 +470,10 @@ export function createArCamera({ camera, params, hooks = {} }) {
     if (!manualLook) setManualLook(true);
     lookYawDeg += dYawDeg;
     const eye = nominalPosition();
-    const basePitch = THREE.MathUtils.radToDeg(Math.atan2(eye.y, Math.hypot(eye.x, eye.z)));
+    const P = params();
+    const basePitch = (P && typeof P.nominalPitch === 'number')
+      ? P.nominalPitch
+      : THREE.MathUtils.radToDeg(Math.atan2(eye.y, Math.hypot(eye.x, eye.z)));
     if (lookPitchDeg === null) lookPitchDeg = basePitch;
     lookPitchDeg = Math.max(-80, Math.min(80, lookPitchDeg + dPitchDeg));
     setAim(lookYawDeg, lookPitchDeg);
@@ -484,7 +494,10 @@ export function createArCamera({ camera, params, hooks = {} }) {
   function dragLook(clientX, clientY, from) {
     const dYaw = (clientX - from.x) * DRAG_DEG_PER_PX;         // 正 = 向左转
     const eye = nominalPosition();
-    const basePitch = THREE.MathUtils.radToDeg(Math.atan2(eye.y, Math.hypot(eye.x, eye.z)));
+    const P = params();
+    const basePitch = (P && typeof P.nominalPitch === 'number')
+      ? P.nominalPitch
+      : THREE.MathUtils.radToDeg(Math.atan2(eye.y, Math.hypot(eye.x, eye.z)));
     const p0 = from.pitch === null ? basePitch : from.pitch;   // 俯角
     const dPitchUp = (clientY - from.y) * DRAG_DEG_PER_PX;     // 正 = 抬头
     lookYawDeg = from.yaw + dYaw;
@@ -549,7 +562,8 @@ export function createArCamera({ camera, params, hooks = {} }) {
 
     /* 云台 drive='gyro'：位置必须【在姿态之后】推 —— 它依赖本帧的相机四元数。
        顺序写反的话位置永远滞后一帧，转动时会看到标注在画面上抖。 */
-    if (P.gimbal.on && P.gimbal.drive === 'gyro') {
+    if (P.gimbal && P.gimbal.on && P.gimbal.drive === 'gyro') {
+      if (!gyroPosRef) captureGyroPosRef();
       syncGimbalPivot();
       updateCamPosFromGyro();
     }

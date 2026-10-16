@@ -329,20 +329,19 @@ const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 
 /* ---------- 可调参数 ---------- */
 const P = {
-  /* ★ 现场真实尺寸（2026-10-13 确认，10-14 修正台面高度）：
-       · 沙盘 = 圆形，直径 2.80 m（外径 φ2800，内径 φ2750）
-       · 平板距沙盘边缘 0.60 m（俯视图标注）→ 距中心 2.00 m
-       · 平板离地 1.30 m，台面离地 0.74 m
-     ⚠️ camHeight 是【相对沙盘面】的高度：
-        camHeight = 1.30 − 0.74 = 0.56 m。
-     ⚠️ 相机距中心 2.00 m（在圆外 0.60 m）时，俯角 ≈ 15.6°，
-        沙盘可全部入画（与 30° 设计标注的差异见 README）。 */
-  camHeight: 0.56,
-  camDist: 2.00,
-  tableW: 2.80,
+    /* ★ 现场实物沙盘真实物理朝向与尺寸（上西·下东·左南·右北）：
+         · 圆形托盘外径 φ2800 mm
+         · 湖南起伏模型收容于圆内（东西向 1.88 m，南北向 2.22 m）
+         · 支架位于沙盘东侧（近景为东界罗霄山脉、湘江），朝西观察
+         · 实测相机相对台面高 0.58 m，距圆心 1.93 m，基准俯角 20.2° */
+    camHeight: 0.58,
+    camDist: 1.93,
+    tableW: 1.88,
+    shiftX: 0.00,
+    shiftZ: 0.38,
   reliefScale: 1.00,
   hFov: 65,          // ★ 横屏用「水平视场角」——平板后摄的真实水平视场就在 65° 上下
-  framePitch: 26,    // 「自动取景」使用的俯角（度）
+    framePitch: 20.2,  // 「自动取景」使用的俯角（度）
   smoothMs: 140,     // 姿态平滑时间常数（ms），0 = 直通
 };
 /* ---------- 取景几何：必须逐角点算，不能用「相机到中心的距离」 ----------
@@ -1389,7 +1388,10 @@ function geoUv(lon, lat) {
 }
 
 function uvToWorld(uv) {
-  return new THREE.Vector3((uv.x - 0.5) * P.tableW, heightAtUv(uv), (0.5 - uv.y) * tableD);
+  const p = new THREE.Vector3((uv.x - 0.5) * P.tableW, heightAtUv(uv), (0.5 - uv.y) * tableD);
+  p.applyAxisAngle(new THREE.Vector3(0, 1, 0), -Math.PI / 2);
+  p.add(new THREE.Vector3(P.shiftX || 0, 0, P.shiftZ || 0));
+  return p;
 }
 
 /* uvToWorld 的逆（只需要 x/z —— y 是 heightAtUv 的结果，反解它没有意义）。
@@ -1397,7 +1399,9 @@ function uvToWorld(uv) {
       地形网格的 uv.x/uv.y 就是直接线性映射到 x/z 的。
       在这里再套一次墨卡托是错的（会让遮挡判定整体偏掉）。 */
 function worldToUv(x, z, out) {
-  return (out || new THREE.Vector2()).set(x / P.tableW + 0.5, 0.5 - z / tableD);
+  const p = new THREE.Vector3(x - (P.shiftX || 0), 0, z - (P.shiftZ || 0));
+  p.applyAxisAngle(new THREE.Vector3(0, 1, 0), +Math.PI / 2);
+  return (out || new THREE.Vector2()).set(p.x / P.tableW + 0.5, 0.5 - p.z / tableD);
 }
 
 /* ---------- 地形起伏统计：与【实物沙盘】对齐垂直比例的依据 ----------
@@ -1486,6 +1490,8 @@ function buildTerrain(colorTexture) {
     roughness: 0.92, metalness: 0.0, side: THREE.DoubleSide,
   }));
   terrain.name = 'HunanTerrain';
+  terrain.rotation.y = -Math.PI / 2;
+  terrain.position.set(P.shiftX || 0, 0, P.shiftZ || 0);
   world.add(terrain);
   terrainGeo = geo;
 

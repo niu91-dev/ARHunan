@@ -79,24 +79,28 @@
 
 <h2>测试页面</h2>
 <div class="nav">
+  <a class="navcard" href="./ar-holo-demo.html?v=20261015-rot90cw">
+    <div class="t"><span class="n">01</span>湖南地形全息扫描 AR<span class="tag tag-main">现场实配 · 上西下东左南右北</span></div>
+    <div class="d"><b>全息扫描 + 实景透视融合方案</b>。已按现场沙盘实物方位（<b>上西·下东·左南·右北</b>）与 φ2800 圆盘精确纠偏，含 3D 边界断崖裙边与高精度地标贴合。</div>
+  </a>
   <a class="navcard" href="./ar-gyro-demo.html">
-    <div class="t"><span class="n">01</span>湖南地形 AR 沙盘<span class="tag tag-main">主力方案</span></div>
+    <div class="t"><span class="n">02</span>湖南地形 AR 测控台<span class="tag tag-debug">测控自检</span></div>
     <div class="d">真实湖南 DEM 地形（0–2076 m）+ 真实相机透视，视角由<b>设备陀螺仪</b>驱动，完全不依赖 ARCore。横屏使用，可点击选点、导出报告。</div>
   </a>
   <a class="navcard" href="./ar-camera.html">
-    <div class="t"><span class="n">02</span>相机 + 陀螺仪 叠加测试<span class="tag tag-main">不依赖 ARCore</span></div>
+    <div class="t"><span class="n">03</span>相机 + 陀螺仪 叠加测试<span class="tag tag-main">不依赖 ARCore</span></div>
     <div class="d">验证「相机一定能出图」这条退路：普通 getUserMedia 画面 + 陀螺仪叠加层，观察相对真实场景会不会滑动。</div>
   </a>
   <a class="navcard" href="./ar.html">
-    <div class="t"><span class="n">03</span>AR 跟踪稳定性测试<span class="tag tag-arcore">需要 ARCore</span></div>
+    <div class="t"><span class="n">04</span>AR 跟踪稳定性测试<span class="tag tag-arcore">需要 ARCore</span></div>
     <div class="d">实测固定支架下 ARCore 跟不跟得住。关键指标是<b>相机位置波动</b> —— 支架不动，相机位置就该恒定。</div>
   </a>
   <a class="navcard" href="./ar-min.html">
-    <div class="t"><span class="n">04</span>AR 最小可复现测试<span class="tag tag-arcore">需要 ARCore</span><span class="tag tag-debug">排查用</span></div>
+    <div class="t"><span class="n">05</span>AR 最小可复现测试<span class="tag tag-arcore">需要 ARCore</span><span class="tag tag-debug">排查用</span></div>
     <div class="d">把 WebXR 剥到只剩一个发光立方体 + 一块网格，用来判断<b>黑屏是 ARCore 的问题还是页面代码的问题</b>。</div>
   </a>
   <a class="navcard" href="./index.html">
-    <div class="t"><span class="n">05</span>设备能力自检<span class="tag tag-debug">本页</span></div>
+    <div class="t"><span class="n">06</span>设备能力自检<span class="tag tag-debug">本页</span></div>
     <div class="d">回答「这台设备能不能用」：运行环境、姿态传感器、ARCore / WebXR、摄像头、外设逐项体检，可导出报告。</div>
   </a>
 </div>
