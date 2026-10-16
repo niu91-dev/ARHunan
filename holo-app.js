@@ -1488,8 +1488,8 @@ async function load() {
         updateLens();
       },
       onReferenceChange(visible) {
-        /* 模型开关仅控制地形网格显隐 */
-        if (terrain) terrain.visible = visible;
+        /* 地形、边界裙边和圆形边界线作为参考模型一起显隐。 */
+        for (const object of referenceObjects) object.visible = visible;
       }
     });
     nextIdle = clock.getElapsedTime() + 0.6;
