@@ -3,7 +3,7 @@
    ----------------------------------------------------------------------------
    ★ 展示层【逐行照搬】参考项目 hunan-terrain-ar-demo 的 app.js：
        环境（暗底 / 雾 / 半球光 + 双向光 / 台座 / 地面 / 网格）
-       地形（0xa3b4a8 材质、baseLift 0.025、relief 0.29、DoubleSide）
+       地形（0xa3b4a8 材质、baseLift 0、relief 0.29、DoubleSide）
        空间扫描（scan-surface.js 的 HoloLens 点云 + 局部三角连接）
        地面定位光柱（buildGroundBeacon 的着色器）
        地点图标 / 引线 / 准心 / 资料卡 / 中心涟漪（sites.css 全套）
@@ -717,7 +717,7 @@ function buildTerrain(heightGrid, meta, colorTexture, maskTexture) {
   const vertices = geometry.attributes.position;
   for (let i = 0; i < vertices.count; i++) {
     const elevation = Math.max(0, heightGrid[i]);
-      vertices.setY(i, 0.025 + elevation / 2076 * 0.22 * (P.tableW / 4.8));
+      vertices.setY(i, elevation / 2076 * 0.22 * (P.tableW / 4.8));
   }
   vertices.needsUpdate = true;
   geometry.computeVertexNormals();
@@ -770,7 +770,7 @@ function buildTerrain(heightGrid, meta, colorTexture, maskTexture) {
     /* ★ 起伏按沙盘尺寸比例缩放（对齐旧页面的 reliefM = 0.29×tableW/4.8）：
        4.8 m 参考盘上 2076 m → 0.29 m；2.8 m 现场盘按比例降到 0.169 m，
        山体高径比与现场实物一致（≈直径 6%）。不缩放的话小沙盘上的山会偏高变陡。 */
-      return 0.025 + height / 2076 * 0.22 * (P.tableW / 4.8);
+      return height / 2076 * 0.22 * (P.tableW / 4.8);
   }
   terrainHeightAt = heightAt;
   P.heightAtUv = heightAt;
