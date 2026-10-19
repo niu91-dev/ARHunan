@@ -75,8 +75,10 @@ const P = {
   gimbal: {
     on: false,
     drive: 'gyro',
-    off: new THREE.Vector3(-0.10, 0.06, 0.02),
-    arm: 0.11,
+    // 首轮几何估算：Pad 6 横屏，旋转轴交点约在机身中心，镜头在屏幕正面视角左上角。
+    // 世界坐标：+X 屏幕右、+Y 向上、+Z 背离沙盘；故镜头向量指向 (-X,+Y,-Z)。
+    off: new THREE.Vector3(-0.12, 0.075, -0.005),
+    arm: Math.hypot(0.12, 0.075, 0.005),
     yawDeg: 0,
     pitchDeg: 0,
   },
@@ -1070,6 +1072,24 @@ function syncArStatus() {
   setSwitch('gimbal-toggle', P.gimbal ? P.gimbal.on : false);
 }
 
+function setGimbalOffset(x, y, z) {
+  if (!P.gimbal) return;
+  P.gimbal.off.set(Number(x), Number(y), Number(z));
+  P.gimbal.arm = P.gimbal.off.length();
+  for (const axis of ['x', 'y', 'z']) {
+    const value = P.gimbal.off[axis];
+    const input = document.getElementById(`gimbal-offset-${axis}`);
+    const output = document.getElementById(`gimbal-offset-${axis}-value`);
+    if (input) input.value = value.toFixed(3);
+    if (output) output.textContent = `${value >= 0 ? '+' : ''}${value.toFixed(3)} m`;
+  }
+}
+
+function setGimbalOffsetControlsVisible(visible) {
+  const row = document.getElementById('gimbal-offset-row');
+  if (row) row.style.display = visible ? 'block' : 'none';
+}
+
 function setupPoseDiagnosticRecorder() {
   const button = document.getElementById('gyro-diag-record');
   const status = document.getElementById('gyro-diag-status');
@@ -1233,25 +1253,22 @@ function setupArControls() {
   document.getElementById('ar-occl').addEventListener('change', e => { P.occlusion = e.target.checked; syncArStatus(); });
   document.getElementById('ar-fusion').addEventListener('change', e => { ar.setMotionFusion(e.target.checked); syncArStatus(); });
   const gt = document.getElementById('gimbal-toggle');
-  const gar = document.getElementById('gimbal-arm');
-  const garRow = document.getElementById('gimbal-arm-row');
-  const garVal = document.getElementById('gimbal-arm-value');
+  const offsetInputs = ['x', 'y', 'z'].map(axis => document.getElementById(`gimbal-offset-${axis}`));
+  setGimbalOffset(P.gimbal.off.x, P.gimbal.off.y, P.gimbal.off.z);
+  setGimbalOffsetControlsVisible(P.gimbal.on);
   if (gt) {
     gt.addEventListener('change', e => {
       P.gimbal.on = e.target.checked;
-      if (gar) gar.style.display = P.gimbal.on ? 'block' : 'none';
-      if (garRow) garRow.style.display = P.gimbal.on ? 'flex' : 'none';
+      setGimbalOffsetControlsVisible(P.gimbal.on);
       ar.syncGimbalPivot();
       noteCameraMotion();
       syncArStatus();
     });
   }
-  if (gar) {
-    gar.addEventListener('input', e => {
-      const arm = Number(e.target.value);
-      P.gimbal.arm = arm;
-      P.gimbal.off.set(-arm * 0.9, arm * 0.5, arm * 0.2);
-      if (garVal) garVal.textContent = `${arm.toFixed(2)} m`;
+  for (const input of offsetInputs) {
+    if (!input) continue;
+    input.addEventListener('input', () => {
+      setGimbalOffset(...offsetInputs.map((el, index) => Number(el ? el.value : P.gimbal.off[['x', 'y', 'z'][index]])));
       ar.syncGimbalPivot();
       noteCameraMotion();
     });
@@ -1360,6 +1377,10 @@ const DEFAULT_SETTINGS = {
   idle: true,
   cull: true,
   occlusion: false,
+  gimbalOn: false,
+  gimbalOffsetX: -0.12,
+  gimbalOffsetY: 0.075,
+  gimbalOffsetZ: -0.005,
 };
 
 function applySettingsToUI(s) {
@@ -1408,18 +1429,21 @@ function applySettingsToUI(s) {
   if (s.gimbalOn !== undefined && P.gimbal) {
     P.gimbal.on = !!s.gimbalOn;
     setSwitch('gimbal-toggle', P.gimbal.on);
-    const gar = document.getElementById('gimbal-arm');
-    const garRow = document.getElementById('gimbal-arm-row');
-    if (gar) gar.style.display = P.gimbal.on ? 'block' : 'none';
-    if (garRow) garRow.style.display = P.gimbal.on ? 'flex' : 'none';
+    setGimbalOffsetControlsVisible(P.gimbal.on);
   }
-  if (s.gimbalArm !== undefined && P.gimbal) {
-    P.gimbal.arm = Number(s.gimbalArm);
-    P.gimbal.off.set(-P.gimbal.arm * 0.9, P.gimbal.arm * 0.5, P.gimbal.arm * 0.2);
-    const gar = document.getElementById('gimbal-arm');
-    const garVal = document.getElementById('gimbal-arm-value');
-    if (gar) gar.value = P.gimbal.arm;
-    if (garVal) garVal.textContent = `${P.gimbal.arm.toFixed(2)} m`;
+  if (P.gimbal && ['gimbalOffsetX', 'gimbalOffsetY', 'gimbalOffsetZ'].some(key => s[key] !== undefined)) {
+    setGimbalOffset(
+      s.gimbalOffsetX !== undefined ? Number(s.gimbalOffsetX) : P.gimbal.off.x,
+      s.gimbalOffsetY !== undefined ? Number(s.gimbalOffsetY) : P.gimbal.off.y,
+      s.gimbalOffsetZ !== undefined ? Number(s.gimbalOffsetZ) : P.gimbal.off.z
+    );
+  } else if (s.gimbalArm !== undefined && P.gimbal) {
+    // 兼容旧版保存的单一臂长：沿用新估算方向并保留旧的偏心半径。
+    const radius = Number(s.gimbalArm);
+    const unit = new THREE.Vector3(-0.12, 0.075, -0.005).normalize();
+    setGimbalOffset(unit.x * radius, unit.y * radius, unit.z * radius);
+  } else if (P.gimbal) {
+    setGimbalOffset(P.gimbal.off.x, P.gimbal.off.y, P.gimbal.off.z);
   }
   syncArStatus();
 }
@@ -1451,7 +1475,10 @@ function setupSettingsPersistence() {
       cull: P.cull,
       occlusion: P.occlusion,
       gimbalOn: P.gimbal ? P.gimbal.on : false,
-      gimbalArm: P.gimbal ? P.gimbal.arm : 0.11,
+      gimbalArm: P.gimbal ? P.gimbal.arm : 0.142,
+      gimbalOffsetX: P.gimbal ? P.gimbal.off.x : -0.12,
+      gimbalOffsetY: P.gimbal ? P.gimbal.off.y : 0.075,
+      gimbalOffsetZ: P.gimbal ? P.gimbal.off.z : -0.005,
       savedAt: new Date().toISOString(),
     };
     try {

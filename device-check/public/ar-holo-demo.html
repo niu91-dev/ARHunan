@@ -252,12 +252,17 @@
           <div><strong>旋转偏心补偿</strong><small>补偿镜头偏离支架中轴的圆弧平移（防旋转脱节）</small></div>
           <label class="switch"><input id="gimbal-toggle" type="checkbox"><span></span></label>
         </div>
-        <div id="gimbal-arm-row" class="slider-label" style="display:none;margin-top:8px">
-          <span>镜头偏心臂长</span><output id="gimbal-arm-value">0.11 m</output>
+        <div id="gimbal-offset-row" style="display:none;margin-top:8px">
+          <p class="hint-line" style="margin:0 0 6px;font-size:10px;color:#79978d">镜头光心相对两轴交点；+X 屏幕右、+Y 向上、+Z 背离沙盘</p>
+          <label class="slider-label" for="gimbal-offset-x"><span>偏移 X</span><output id="gimbal-offset-x-value">-0.120 m</output></label>
+          <input id="gimbal-offset-x" type="range" min="-0.25" max="0.25" step="0.001" value="-0.120">
+          <label class="slider-label" for="gimbal-offset-y"><span>偏移 Y</span><output id="gimbal-offset-y-value">+0.075 m</output></label>
+          <input id="gimbal-offset-y" type="range" min="-0.25" max="0.25" step="0.001" value="0.075">
+          <label class="slider-label" for="gimbal-offset-z"><span>偏移 Z</span><output id="gimbal-offset-z-value">-0.005 m</output></label>
+          <input id="gimbal-offset-z" type="range" min="-0.10" max="0.10" step="0.001" value="-0.005">
         </div>
-        <input id="gimbal-arm" type="range" min="0.0" max="0.30" step="0.01" value="0.11" style="display:none">
         <button id="gyro-diag-record" type="button" style="width:100%;margin-top:12px">记录姿态诊断（20 秒）</button>
-        <p id="gyro-diag-status" class="camera-status" aria-live="polite" style="margin-top:6px">切换补偿或臂长后先重新对齐；每组录 20 秒，结束后再点按钮下载 CSV。</p>
+        <p id="gyro-diag-status" class="camera-status" aria-live="polite" style="margin-top:6px">切换补偿或调整 XYZ 偏移后先重新对齐；每组录 20 秒，结束后再点按钮下载 CSV。</p>
         <button id="gyro-toggle" hidden></button>
         <button id="camera-toggle" hidden></button>
         <button id="ar-reset-view" type="button" style="display:none"></button>
@@ -276,6 +281,6 @@
     </aside>
   </main>
   <div id="loading" class="on">正在加载湖南地形数据…</div>
-  <script type="module" src="./holo-app.js?v=20261019-pose-diag1"></script>
+  <script type="module" src="./holo-app.js?v=20261019-gimbal-xyz1"></script>
 </body>
 </html>
