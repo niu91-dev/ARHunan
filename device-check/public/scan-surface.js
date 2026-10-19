@@ -24,7 +24,7 @@ const SIGNAL = `
     float front=exp(-pow(behind/0.15,2.0))*uSweepActive;
     float trail=smoothstep(-0.05,0.15,behind)*exp(-max(behind,0.0)*5.0)*uSweepActive;
     float fd=focusDistance(uv);
-    float elevation=(surfaceY-.025)*2076.0/.29;
+    float elevation=surfaceY*2076.0/.29;
     float band=smoothstep(uFocusBand.x-160.0,uFocusBand.x+40.0,elevation)
       *(1.0-smoothstep(uFocusBand.y-40.0,uFocusBand.y+180.0,elevation));
     float footprint=exp(-pow(fd,3.0))*mix(.18,1.0,band);
