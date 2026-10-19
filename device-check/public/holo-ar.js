@@ -216,6 +216,8 @@ export function createArCamera({ camera, params, hooks = {} }) {
      这样既有高频、又不会累积漂移。 */
   let haveMotion = false, motionN = 0, motionHz = 0;
   let motionFrames = 0, motionHzT0 = 0, lastMotionT = 0;
+  let lastMotionGapMs = 0, lastMotionUsedDtMs = 0;
+  let lastRateAlpha = null, lastRateBeta = null, lastRateGamma = null;
   let motionFusion = true;       // 设置面板可切换，方便 A/B 对比
   let motionGain = 1.0;          // 角速度增益，1.0 为标称值
 
@@ -233,8 +235,14 @@ export function createArCamera({ camera, params, hooks = {} }) {
       motionFrames = 0; motionHzT0 = now;
     }
 
-    const dt = lastMotionT ? Math.min((now - lastMotionT) / 1000, 0.1) : 0;
+    const gapMs = lastMotionT ? now - lastMotionT : 0;
+    const dt = gapMs ? Math.min(gapMs / 1000, 0.1) : 0;
     lastMotionT = now;
+    lastMotionGapMs = gapMs;
+    lastMotionUsedDtMs = dt * 1000;
+    lastRateAlpha = rr.alpha ?? null;
+    lastRateBeta = rr.beta ?? null;
+    lastRateGamma = rr.gamma ?? null;
     if (!motionFusion || !haveOrient || dt <= 0) return;
 
     /* rotationRate 分量对应设备本体轴（deg/s）：
@@ -832,6 +840,9 @@ export function createArCamera({ camera, params, hooks = {} }) {
         yawFromAlignDeg: yawFromAlign(),
         yawTravelledDeg: Number(yawTravelledDeg.toFixed(1)),
         haveMotion, motionN, motionHz: Number(motionHz.toFixed(2)),
+        motionGapMs: Number(lastMotionGapMs.toFixed(1)),
+        motionUsedDtMs: Number(lastMotionUsedDtMs.toFixed(1)),
+        rawMotion: { alpha: lastRateAlpha, beta: lastRateBeta, gamma: lastRateGamma },
         motionFusion, motionGain,
         raw: { alpha: lastA, beta: lastB, gamma: lastG, screenAngle: screenAngleDeg() },
         standTilt: standTiltVerdict(),

@@ -256,6 +256,8 @@
           <span>镜头偏心臂长</span><output id="gimbal-arm-value">0.11 m</output>
         </div>
         <input id="gimbal-arm" type="range" min="0.0" max="0.30" step="0.01" value="0.11" style="display:none">
+        <button id="gyro-diag-record" type="button" style="width:100%;margin-top:12px">记录姿态诊断（20 秒）</button>
+        <p id="gyro-diag-status" class="camera-status" aria-live="polite" style="margin-top:6px">切换补偿或臂长后先重新对齐；每组录 20 秒，结束后再点按钮下载 CSV。</p>
         <button id="gyro-toggle" hidden></button>
         <button id="camera-toggle" hidden></button>
         <button id="ar-reset-view" type="button" style="display:none"></button>
@@ -274,6 +276,6 @@
     </aside>
   </main>
   <div id="loading" class="on">正在加载湖南地形数据…</div>
-  <script type="module" src="./holo-app.js?v=20261015-rot90cw"></script>
+  <script type="module" src="./holo-app.js?v=20261019-pose-diag1"></script>
 </body>
 </html>

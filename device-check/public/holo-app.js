@@ -20,7 +20,7 @@ import * as THREE from 'three';
 import { SITES, GEO_BOUNDS } from './sites.js';
 import { createTerrainScan } from './scan-surface.js';
 import { setupCameraPreview } from './camera-preview.js';
-import { createArCamera, OCCLUSION_THRESHOLDS } from './holo-ar.js?v=20261015-fovgimbal1';
+import { createArCamera, OCCLUSION_THRESHOLDS } from './holo-ar.js?v=20261019-pose-diag1';
 
 const scanReview = new URLSearchParams(location.search).get('review') === 'scan';
 document.body.classList.toggle('scan-review', scanReview);
@@ -1070,6 +1070,144 @@ function syncArStatus() {
   setSwitch('gimbal-toggle', P.gimbal ? P.gimbal.on : false);
 }
 
+function setupPoseDiagnosticRecorder() {
+  const button = document.getElementById('gyro-diag-record');
+  const status = document.getElementById('gyro-diag-status');
+  if (!button || !status) return;
+
+  const durationMs = 20_000;
+  const sampleMs = 50;
+  const columns = [
+    'time_utc', 'elapsed_ms', 'sample_interval_ms',
+    'orient_alpha_deg', 'orient_beta_deg', 'orient_gamma_deg', 'screen_angle_deg',
+    'orient_gap_avg_ms', 'orient_count',
+    'motion_alpha_dps', 'motion_beta_dps', 'motion_gamma_dps',
+    'motion_gap_ms', 'motion_dt_used_ms', 'motion_hz', 'motion_count',
+    'camera_x_m', 'camera_y_m', 'camera_z_m', 'camera_qx', 'camera_qy', 'camera_qz', 'camera_qw',
+    'gimbal_enabled', 'arm_setting_m', 'offset_x_m', 'offset_y_m', 'offset_z_m',
+    'motion_fusion', 'motion_gain', 'smooth_ms', 'aligned'
+  ];
+  let timer = 0;
+  let rows = [];
+  let startedAt = 0;
+  let wallStart = 0;
+  let lastSampleAt = 0;
+  let lastShownSecond = -1;
+  let readyToDownload = false;
+
+  function csvCell(value) {
+    if (value === null || value === undefined || !Number.isFinite(value) && typeof value === 'number') return '';
+    const text = String(value);
+    return /[",\r\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
+  }
+
+  function finishRecording() {
+    if (timer) clearInterval(timer);
+    timer = 0;
+    button.setAttribute('aria-pressed', 'false');
+    if (!rows.length) {
+      button.textContent = '记录姿态诊断（20 秒）';
+      status.textContent = '没有采到样本；请确认陀螺仪已开启并重新对齐后再试。';
+      return;
+    }
+    readyToDownload = true;
+    button.textContent = '下载诊断 CSV';
+    status.textContent = `采集完成，共 ${rows.length} 条样本。点击按钮下载 CSV。`;
+  }
+
+  function downloadRecording() {
+    if (!readyToDownload || !rows.length) return;
+    const csv = '\uFEFF' + [columns.join(','), ...rows.map(row => columns.map(key => csvCell(row[key])).join(','))].join('\r\n');
+    const blobUrl = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    const link = document.createElement('a');
+    const stamp = new Date(wallStart).toISOString().replace(/[:.]/g, '-');
+    link.href = blobUrl;
+    link.download = `ar-pose-diagnostic-${stamp}.csv`;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 10_000);
+    status.textContent = `已导出 ${rows.length} 条样本。请保留本次设置并记录测试组别。`;
+    showToast('姿态诊断 CSV 已下载');
+    rows = [];
+    readyToDownload = false;
+    button.textContent = '记录姿态诊断（20 秒）';
+  }
+
+  function sample() {
+    const now = performance.now();
+    const elapsed = now - startedAt;
+    const d = ar.debug;
+    const pos = camera.position;
+    const quat = camera.quaternion;
+    const off = P.gimbal.off;
+    rows.push({
+      time_utc: new Date(wallStart + elapsed).toISOString(),
+      elapsed_ms: Number(elapsed.toFixed(1)),
+      sample_interval_ms: lastSampleAt ? Number((now - lastSampleAt).toFixed(1)) : 0,
+      orient_alpha_deg: d.raw.alpha,
+      orient_beta_deg: d.raw.beta,
+      orient_gamma_deg: d.raw.gamma,
+      screen_angle_deg: d.raw.screenAngle,
+      orient_gap_avg_ms: d.orientGapMs,
+      orient_count: d.orientN,
+      motion_alpha_dps: d.rawMotion.alpha,
+      motion_beta_dps: d.rawMotion.beta,
+      motion_gamma_dps: d.rawMotion.gamma,
+      motion_gap_ms: d.motionGapMs,
+      motion_dt_used_ms: d.motionUsedDtMs,
+      motion_hz: d.motionHz,
+      motion_count: d.motionN,
+      camera_x_m: Number(pos.x.toFixed(6)),
+      camera_y_m: Number(pos.y.toFixed(6)),
+      camera_z_m: Number(pos.z.toFixed(6)),
+      camera_qx: Number(quat.x.toFixed(7)),
+      camera_qy: Number(quat.y.toFixed(7)),
+      camera_qz: Number(quat.z.toFixed(7)),
+      camera_qw: Number(quat.w.toFixed(7)),
+      gimbal_enabled: P.gimbal.on,
+      arm_setting_m: P.gimbal.arm,
+      offset_x_m: Number(off.x.toFixed(5)),
+      offset_y_m: Number(off.y.toFixed(5)),
+      offset_z_m: Number(off.z.toFixed(5)),
+      motion_fusion: d.motionFusion,
+      motion_gain: d.motionGain,
+      smooth_ms: P.smoothMs,
+      aligned: d.aligned
+    });
+    lastSampleAt = now;
+
+    const second = Math.min(20, Math.floor(elapsed / 1000));
+    if (second !== lastShownSecond) {
+      lastShownSecond = second;
+      status.textContent = `正在记录：${second}/20 秒。按本组动作缓慢旋转并回正。`;
+    }
+    if (elapsed >= durationMs) finishRecording();
+  }
+
+  button.addEventListener('click', () => {
+    if (timer) { finishRecording(); return; }
+    if (readyToDownload) { downloadRecording(); return; }
+    const d = ar.debug;
+    if (!d.haveOrient || !d.aligned) {
+      status.textContent = '请先开启陀螺仪并完成对齐，再开始记录。';
+      showToast('姿态诊断需要已对齐的陀螺仪');
+      return;
+    }
+    rows = [];
+    readyToDownload = false;
+    startedAt = performance.now();
+    lastSampleAt = 0;
+    lastShownSecond = -1;
+    wallStart = Date.now();
+    button.textContent = '停止采集';
+    button.setAttribute('aria-pressed', 'true');
+    status.textContent = '正在启动记录…';
+    timer = setInterval(sample, sampleMs);
+    sample();
+  });
+}
+
 
 function setupArControls() {
 
@@ -1131,6 +1269,7 @@ function setupArControls() {
       }
     });
   }
+  setupPoseDiagnosticRecorder();
 }
 
 /* ============================================================================
