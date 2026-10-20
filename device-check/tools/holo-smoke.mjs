@@ -278,10 +278,17 @@ writeFileSync(SHOT, Buffer.from(shot.data, 'base64'));
 console.log(`\n截图 → ${SHOT}`);
 
 const st = await evalJson(`(()=>{const s=window.__holo.state; return {
-  fps:s.fps, frames:s.frames, hFov:s.hFovDeg, vFov:s.vFovDeg, zoom:s.zoom,
+  fps:s.fps, frames:s.frames, baseHFov:s.baseHFovDeg, nominalHFov:s.nominalHFovDeg,
+  hFov:s.hFovDeg, vFov:s.vFovDeg, zoom:s.zoom,
   camHeight:s.camHeight, camDist:s.camDist, tableW:s.tableW, tableD:s.tableD,
   aligned:s.aligned, manualLook:s.manualLook, visible:s.markerVisible, occluded:s.markerOccluded}})()`);
 console.log('  运行状态：' + JSON.stringify(st));
+const expTanH = Math.tan((63.7 * Math.PI / 180) / 2) * (1.6 / (16 / 9));
+const expHFov = Number((2 * Math.atan(expTanH) * 180 / Math.PI).toFixed(1));
+const expVFov = Number((2 * Math.atan(expTanH / 1.6) * 180 / Math.PI).toFixed(2));
+const fovOk = st.baseHFov === 63.7 && st.nominalHFov === 63.7 &&
+  Math.abs(st.hFov - expHFov) <= 0.1 && Math.abs(st.vFov - expVFov) <= 0.1;
+(fovOk ? ok : bad)(`默认 FOV 匹配小米 Pad 6 后摄光学参数（标称 ${st.nominalHFov}° / 16:10 等效 ${st.hFov}° × ${st.vFov}°，期望 ${expHFov}° × ${expVFov}°）`);
 
 console.log(`\n结果：${pass} 通过 / ${fail} 失败`);
 ws.close(); proc.kill();
