@@ -201,7 +201,11 @@ const ar = createArCamera({
       if (el) el.hidden = true;
       syncArStatus();
     },
-    onFirstOrient() { syncArStatus(); },
+    onFirstOrient() {
+      ar.setManualLook(false);
+      hint.textContent = '转动平板改变视线 · 点击地形触发扫描';
+      syncArStatus();
+    },
     onFallbackShow() { syncArStatus(); },
   },
 });
@@ -1444,7 +1448,15 @@ function setupArControls() {
       syncArStatus();
     });
   }
-  document.getElementById('ar-align').addEventListener('click', () => { ar.align(false); noteCameraMotion(); });
+  document.getElementById('ar-align').addEventListener('click', () => {
+    if (ar.hasGyro()) {
+      ar.setManualLook(false);
+      hint.textContent = '转动平板改变视线 · 点击地形触发扫描';
+    }
+    ar.align(false);
+    noteCameraMotion();
+    syncArStatus();
+  });
   const az = document.getElementById('ar-zero');
   if (az) az.addEventListener('click', () => { ar.zeroDrift(); noteCameraMotion(); });
   const rz = document.getElementById('ar-reset-view');
