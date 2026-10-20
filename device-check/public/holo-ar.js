@@ -809,6 +809,34 @@ export function createArCamera({ camera, params, hooks = {} }) {
   let t0 = 0;
   let fallbackTimer = 0;
   let attached = false;
+  let relSensor = null;
+
+  function startGenericSensor() {
+    const SensorClass = window.RelativeOrientationSensor || window.AbsoluteOrientationSensor;
+    if (typeof SensorClass !== 'function') return;
+    try {
+      if (!relSensor) {
+        relSensor = new SensorClass({ frequency: 60, referenceFrame: 'screen' });
+        relSensor.addEventListener('reading', () => {
+          const q = relSensor.quaternion;
+          if (!q || q.length < 4) return;
+          orientN++;
+          const first = !haveOrient;
+          if (first) {
+            haveOrient = true;
+            onFirstOrient();
+            alignNow(true);
+          }
+        });
+        relSensor.addEventListener('error', e => {
+          console.warn('OrientationSensor error:', e.error);
+        });
+      }
+      relSensor.start();
+    } catch (e) {
+      console.warn('OrientationSensor not supported/permitted:', e);
+    }
+  }
 
   function attach() {
     if (attached) return;
@@ -817,6 +845,7 @@ export function createArCamera({ camera, params, hooks = {} }) {
     window.addEventListener('deviceorientation', onOrient, true);
     window.addEventListener('devicemotion', onMotion, true);
     window.addEventListener('deviceorientationabsolute', onOrientAbs, true);
+    startGenericSensor();
     /* 陀螺仪迟迟不来时先把模型按固定视角显示出来，总比一直空白好 */
     fallbackTimer = setTimeout(() => {
       if (!haveOrient && !fallbackShow) { fallbackShow = true; onFallbackShow(); }
@@ -828,6 +857,9 @@ export function createArCamera({ camera, params, hooks = {} }) {
     window.removeEventListener('deviceorientation', onOrient, true);
     window.removeEventListener('devicemotion', onMotion, true);
     window.removeEventListener('deviceorientationabsolute', onOrientAbs, true);
+    if (relSensor) {
+      try { relSensor.stop(); } catch (e) {}
+    }
     clearTimeout(fallbackTimer);
   }
 
