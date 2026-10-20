@@ -209,7 +209,7 @@
           <input id="distance" type="range" min="1.0" max="3.5" step="0.01" value="1.93">
           <label class="slider-label" for="zoom"><span>镜头缩放 (FOV)</span><output id="zoom-value">1.00×</output></label>
           <input id="zoom" type="range" min="0.8" max="2.5" step="0.01" value="1.00">
-        <p class="hint-line" style="margin:2px 0 10px;font-size:10px;color:#79978d">已开启摄像头 16:9 画幅自动适配；微调缩放可校准旋转边缘吻合度</p>
+        <p class="hint-line" style="margin:2px 0 10px;font-size:10px;color:#79978d">默认 1.00× 匹配小米 Pad 6 后摄（等效 28mm / 标称 63.7° HFOV）并自动适配 16:9 裁切</p>
         <label class="slider-label" for="lateral"><span>沿边左右位置</span><output id="lateral-value">0.0 m</output></label>
         <input id="lateral" type="range" min="-1.4" max="1.4" step="0.05" value="0">
         <div class="save-actions" style="display:flex;gap:8px;margin-top:16px">
@@ -287,6 +287,6 @@
     </aside>
   </main>
   <div id="loading" class="on">正在加载湖南地形数据…</div>
-  <script type="module" src="./holo-app.js?v=20261020-terrain-scale1"></script>
+  <script type="module" src="./holo-app.js?v=20261020-pad6-fov1"></script>
 </body>
 </html>

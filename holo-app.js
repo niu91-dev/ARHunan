@@ -30,7 +30,11 @@ const readout = document.getElementById('scan-readout');
 const hint = document.getElementById('hint');
 const errorBox = document.getElementById('error');
 const settings = { idle: true };
-const BASE_VERTICAL_FOV = 48;
+// 小米 Pad 6 后置主摄（OV13B10 1/3.06", f/2.2, 等效 28mm）：原生水平视场角 63.7°，16:9 视频垂直视场角 38.52°
+const PAD6_CAMERA_HFOV_DEG = 63.7;
+const PAD6_DEFAULT_VIDEO_ASPECT = 16 / 9;
+const LENS_PROFILE_ID = 'pad6-ov13b10-63.7';
+const BASE_VERTICAL_FOV = 38.52;
 const TERRAIN_ASPECT = 5.5 / 4.8;
 const DWELL_SECONDS = 0.5;
 const clock = new THREE.Clock();
@@ -54,7 +58,7 @@ let introPages = [];
      1. 沙盘为 φ2800 mm 正圆台面，实际制作的湖南起伏地形收容于圆内（长宽约 2.45m × 2.15m）；
      2. 地形相对圆盘中心向南微移 12 cm、向东微调 4 cm，使洞庭湖与南岭对称落入圆周；
      3. 支架离地高度实测高出台面 0.58 m，距圆心水平距离 1.93 m（离外沿约 0.53 m）；
-     4. 支架夹具初始机械倾角使相机光学基准俯角为 20.2°；后摄水平视场 65°。 */
+     4. 支架夹具初始机械倾角使相机光学基准俯角为 20.2°；后摄标称水平视场 63.7°（等效 28mm）。 */
 const P = {
   tableW: 1.88,                                 // 实际湖南地形东西向物理跨度（1.88 m，与实物沙盘东西跨度一致）
   tableD: 2.22,                                 // 实际湖南地形南北向物理跨度（2.22 m，与实物沙盘南北跨度一致）
@@ -883,29 +887,23 @@ const referenceObjects = [];
 let scene;
 
 /* ============================================================================
-   镜头：照抄参考项目（BASE_VERTICAL_FOV + zoom），
-   保证默认取景与参考项目逐像素一致。相机 AR 块只管【位姿】，不管镜头参数。
+   镜头：以小米 Pad 6 后置主摄光学参数（OV13B10 1/3.06", f/2.2, 等效 28mm，
+   原生水平视场角 PAD6_CAMERA_HFOV_DEG = 63.7°）作为 zoom = 1.00× 的默认基准，
+   并根据摄像头实时视频流（16:9）与屏幕视口的 object-fit: cover 裁切比例自动换算。
    ============================================================================ */
 function updateLens() {
   if (!camera) return;
-  const baseHorizontal = 2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(BASE_VERTICAL_FOV) / 2) * camera.aspect);
-  const targetHorizontal = baseHorizontal / P.zoom;
+  const baseHorizontal = THREE.MathUtils.degToRad(PAD6_CAMERA_HFOV_DEG);
+  const tanHalfTargetH = Math.tan(baseHorizontal / 2) / P.zoom;
+  const targetHorizontal = 2 * Math.atan(tanHalfTargetH);
 
-  // 摄像头画幅适配：如果摄像头正在运行，根据其真实分辨率与当前视口宽高比，计算 object-fit: cover 裁切比例
+  // 摄像头画幅适配：根据实时视频流宽高比（未就绪时默认按 16:9 采集画幅）与当前视口宽高比，计算 object-fit: cover 裁切比例
   const video = document.getElementById('camera-feed');
-  let aspectScaleX = 1.0;
-  let hasActiveVideo = false;
-  if (video && !video.hidden && video.videoWidth && video.videoHeight) {
-    hasActiveVideo = true;
-    const videoAspect = video.videoWidth / video.videoHeight;
-    const screenAspect = camera.aspect;
-    if (videoAspect > screenAspect) {
-      // 视频（如 16:9）比视口（如 16:10）更宽：object-fit: cover 裁切左右，水平视场角按比例收缩
-      aspectScaleX = screenAspect / videoAspect;
-    }
-  }
+  const hasActiveVideo = !!(video && !video.hidden && video.videoWidth && video.videoHeight);
+  const videoAspect = hasActiveVideo ? (video.videoWidth / video.videoHeight) : PAD6_DEFAULT_VIDEO_ASPECT;
+  const screenAspect = camera.aspect;
+  const aspectScaleX = videoAspect > screenAspect ? (screenAspect / videoAspect) : 1.0;
 
-  const tanHalfTargetH = Math.tan(targetHorizontal / 2);
   const tanHalfEffectiveH = tanHalfTargetH * aspectScaleX;
   const effectiveHorizontal = 2 * Math.atan(tanHalfEffectiveH);
 
@@ -917,7 +915,7 @@ function updateLens() {
   const hFovDeg = Number(THREE.MathUtils.radToDeg(effectiveHorizontal).toFixed(1));
   const nominalHFovDeg = Number(THREE.MathUtils.radToDeg(targetHorizontal).toFixed(1));
   if (zv) {
-    if (hasActiveVideo && aspectScaleX < 0.999) {
+    if (aspectScaleX < 0.999) {
       zv.textContent = `${P.zoom.toFixed(2)}× (等效 ${hFovDeg}° / 标称 ${nominalHFovDeg}°)`;
     } else {
       zv.textContent = `${P.zoom.toFixed(2)}× (${hFovDeg}°)`;
@@ -1479,6 +1477,7 @@ function setupPanelDrawer() {
   }
 
 const DEFAULT_SETTINGS = {
+  lensProfile: LENS_PROFILE_ID,
     camHeight: 0.58,
     camDist: 1.93,
     zoom: 1.0,
@@ -1566,6 +1565,11 @@ function loadSavedSettings() {
     const raw = localStorage.getItem(SETTINGS_STORAGE_KEY);
     if (!raw) return false;
     const data = JSON.parse(raw);
+    if (data && data.lensProfile !== LENS_PROFILE_ID) {
+      data.zoom = DEFAULT_SETTINGS.zoom;
+      data.camHeight = DEFAULT_SETTINGS.camHeight;
+      data.camDist = DEFAULT_SETTINGS.camDist;
+    }
     applySettingsToUI(data);
     return true;
   } catch (err) {
@@ -1580,6 +1584,7 @@ function setupSettingsPersistence() {
 
   function saveCurrent() {
     const data = {
+      lensProfile: LENS_PROFILE_ID,
       camHeight: P.camHeight,
       camDist: P.camDist,
       zoom: P.zoom,
@@ -1787,7 +1792,8 @@ async function load() {
       get state() {
         return {
           ready: true, fps: Number(fps.toFixed(1)), frames: frameN,
-          zoom: P.zoom, hFovDeg: R.hFovDeg, vFovDeg: R.vFovDeg, aspect: R.aspect,
+          zoom: P.zoom, baseHFovDeg: PAD6_CAMERA_HFOV_DEG, nominalHFovDeg: R.nominalHFovDeg,
+          hFovDeg: R.hFovDeg, vFovDeg: R.vFovDeg, aspect: R.aspect,
           tableW: P.tableW, tableD: P.tableD,
           camHeight: P.camHeight, camDist: P.camDist, lateral: P.lateral,
           terrainYOffset: P.terrainYOffset,
