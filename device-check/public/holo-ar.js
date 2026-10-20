@@ -149,7 +149,11 @@ export function createArCamera({ camera, params, hooks = {} }) {
   }
 
   function onOrient(e) {
-    if (e.alpha === null || e.alpha === undefined) return;
+    const hasAlpha = (e.alpha !== null && e.alpha !== undefined);
+    const hasBeta = (e.beta !== null && e.beta !== undefined);
+    const hasGamma = (e.gamma !== null && e.gamma !== undefined);
+    if (!hasAlpha && !hasBeta && !hasGamma) return;
+
     const first = !haveOrient;
     if (first) haveOrient = true;
     orientN++;
@@ -163,7 +167,11 @@ export function createArCamera({ camera, params, hooks = {} }) {
     }
     lastOrientT = t;
     evTimes.push(t);
-    alpha = e.alpha; lastA = e.alpha; lastB = e.beta; lastG = e.gamma;
+    // 兼容无电子罗盘/地磁传感器的设备（如小米 Pad 6）：alpha 允许为 null 并由陀螺仪推进
+    alpha = hasAlpha ? e.alpha : (alpha || 0);
+    lastA = alpha;
+    lastB = hasBeta ? e.beta : (lastB || 0);
+    lastG = hasGamma ? e.gamma : (lastG || 0);
     /* 每次拿到绝对姿态就校正一次积分结果 —— 这是「高频但不累积漂移」的关键 */
     resetBaseFromOrient();
     /* 必须在 resetBaseFromOrient() 之后才能对齐（对齐要读 qBase） */
@@ -243,6 +251,16 @@ export function createArCamera({ camera, params, hooks = {} }) {
     lastRateAlpha = rr.alpha ?? null;
     lastRateBeta = rr.beta ?? null;
     lastRateGamma = rr.gamma ?? null;
+    if (!motionFusion || dt <= 0) return;
+
+    // 保底：若设备仅派发 devicemotion，同样唤醒姿态跟随
+    if (!haveOrient && motionN > 3) {
+      haveOrient = true;
+      lastA = 0; lastB = 0; lastG = 0;
+      resetBaseFromOrient();
+      onFirstOrient();
+      alignNow(true);
+    }
     if (!motionFusion || !haveOrient || dt <= 0) return;
 
     /* rotationRate 分量对应设备本体轴（deg/s）：
@@ -796,9 +814,9 @@ export function createArCamera({ camera, params, hooks = {} }) {
     if (attached) return;
     attached = true;
     t0 = performance.now();
-    addEventListener('deviceorientation', onOrient);
-    addEventListener('devicemotion', onMotion);
-    addEventListener('deviceorientationabsolute', onOrientAbs);
+    window.addEventListener('deviceorientation', onOrient, true);
+    window.addEventListener('devicemotion', onMotion, true);
+    window.addEventListener('deviceorientationabsolute', onOrientAbs, true);
     /* 陀螺仪迟迟不来时先把模型按固定视角显示出来，总比一直空白好 */
     fallbackTimer = setTimeout(() => {
       if (!haveOrient && !fallbackShow) { fallbackShow = true; onFallbackShow(); }
@@ -807,9 +825,9 @@ export function createArCamera({ camera, params, hooks = {} }) {
   function detach() {
     if (!attached) return;
     attached = false;
-    removeEventListener('deviceorientation', onOrient);
-    removeEventListener('devicemotion', onMotion);
-    removeEventListener('deviceorientationabsolute', onOrientAbs);
+    window.removeEventListener('deviceorientation', onOrient, true);
+    window.removeEventListener('devicemotion', onMotion, true);
+    window.removeEventListener('deviceorientationabsolute', onOrientAbs, true);
     clearTimeout(fallbackTimer);
   }
 
