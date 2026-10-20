@@ -1,0 +1,17 @@
+{
+  "name": "湖南地形全息扫描 · 沙盘视角 Demo",
+  "short_name": "湖南AR沙盘",
+  "description": "站在沙盘边缘，从固定支架上的 Pad 视角观察湖南起伏地形与全息地标",
+  "start_url": "./ar-holo-demo.html",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#081211",
+  "theme_color": "#081211",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M16 2 30 16 16 30 2 16Z' fill='%230c1917' stroke='%2370e2be' stroke-width='2'/%3E%3C/svg%3E",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}

@@ -1073,6 +1073,86 @@ function setupControls() {
   }, { passive: false });
 }
 
+/* ============================================================================
+   全屏控制与自适应（含首次触摸自动全屏 + 横屏锁定）
+   ============================================================================ */
+function setupFullscreenControls() {
+  const btnFs = document.getElementById('btn-fullscreen');
+  const icon = document.getElementById('fs-icon');
+  const text = document.getElementById('fs-text');
+
+  function isFullscreen() {
+    return !!(document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement);
+  }
+
+  function updateFsUi() {
+    const fs = isFullscreen();
+    if (icon) icon.textContent = fs ? '🗗' : '⛶';
+    if (text) text.textContent = fs ? '退出全屏' : '全屏';
+    if (btnFs) btnFs.setAttribute('aria-pressed', String(fs));
+    setTimeout(() => {
+      resize();
+      updateLens();
+    }, 120);
+  }
+
+  async function enterFullscreen() {
+    if (isFullscreen()) return;
+    const docEl = document.documentElement;
+    const req = docEl.requestFullscreen || docEl.webkitRequestFullscreen || docEl.mozRequestFullScreen || docEl.msRequestFullscreen;
+    if (req) {
+      try {
+        await req.call(docEl);
+        if (screen.orientation && screen.orientation.lock) {
+          try { await screen.orientation.lock('landscape'); } catch (e) {}
+        }
+      } catch (err) {
+        console.warn('全屏请求被浏览器拒绝或未获授权：', err);
+      }
+    }
+  }
+
+  async function exitFullscreen() {
+    if (!isFullscreen()) return;
+    const exit = document.exitFullscreen || document.webkitExitFullscreen || document.mozCancelFullScreen || document.msExitFullscreen;
+    if (exit) {
+      try { await exit.call(document); } catch (e) {}
+    }
+  }
+
+  async function toggleFullscreen() {
+    if (isFullscreen()) {
+      await exitFullscreen();
+    } else {
+      await enterFullscreen();
+    }
+  }
+
+  if (btnFs) {
+    btnFs.addEventListener('click', event => {
+      event.stopPropagation();
+      toggleFullscreen();
+    });
+  }
+
+  /* 首次交互自动全屏：
+     浏览器安全策略要求必须有用户手势，因此监听首次触摸/点击，
+     一旦触碰屏幕立即自动发起全屏请求与横屏锁定。 */
+  let autoRequested = false;
+  function onFirstTouchAutoFullscreen() {
+    if (autoRequested || isFullscreen()) return;
+    autoRequested = true;
+    enterFullscreen();
+  }
+  window.addEventListener('pointerdown', onFirstTouchAutoFullscreen, { passive: true, once: true });
+
+  document.addEventListener('fullscreenchange', updateFsUi);
+  document.addEventListener('webkitfullscreenchange', updateFsUi);
+  document.addEventListener('mozfullscreenchange', updateFsUi);
+
+  return { enter: enterFullscreen, exit: exitFullscreen, toggle: toggleFullscreen, isFullscreen };
+}
+
 function setupScanReview() {
   const rw = document.getElementById('review-wave');
   if (rw) rw.addEventListener('click', scanFromReticle);
@@ -1789,6 +1869,7 @@ async function load() {
     setupArControls();
     const drawer = setupPanelDrawer();
     const persistence = setupSettingsPersistence();
+    const fsCtrl = setupFullscreenControls();
     syncArStatus();
     setupCameraPreview({
       onCameraChange(active) {
@@ -1811,6 +1892,7 @@ async function load() {
       closePanel: drawer.close,
       saveSettings: persistence.save,
       resetSettings: persistence.reset,
+      fullscreen: fsCtrl,
       ar,
       get state() {
         return {
