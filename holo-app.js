@@ -60,6 +60,7 @@ const P = {
   tableD: 2.22,                                 // 实际湖南地形南北向物理跨度（2.22 m，与实物沙盘南北跨度一致）
   shiftX: 0.00,                                 // 东西向横向居中（0 cm）
   shiftZ: 0.38,                                 // 沿视线向南平移 38 cm（匹配实物沙盘在圆盘中的真实质心）
+  terrainYOffset: 0,                            // 虚拟层相对实体沙盘的整体竖直对位（独立于镜头支点偏移）
   camHeight: 0.58,                              // 相机离沙盘台面高度（实测 0.58 m）
   camDist: 1.93,                                // 相机离沙盘中心水平距离（实测 1.93 m）
   lateral: 0,                                   // 沿边左右位置（m）
@@ -552,8 +553,10 @@ function buildSites() {
   siteMarkers = SITES.map((site, index) => {
     const uv = geoUv(site.lon, site.lat);
     const groundPoint = uvToWorld(uv.x, uv.y, terrainHeightAt(uv) + 0.004);
+    groundPoint.y += P.terrainYOffset;
     const point = groundPoint.clone(); point.y += .27;
     const groundBeacon = buildGroundBeacon(uv, index);
+    groundBeacon.position.y = P.terrainYOffset;
     const stem = document.createElementNS('http://www.w3.org/2000/svg','path');
     document.getElementById('site-stems').append(stem);
     const button = document.createElement('button');
@@ -728,7 +731,7 @@ function buildTerrain(heightGrid, meta, colorTexture, maskTexture) {
     terrain = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({ map: colorTexture, color: 0xffffff, alphaTest: 0.5, roughness: 0.90, metalness: 0.0, side: THREE.DoubleSide }));
   terrain.name = 'HunanTerrain';
     terrain.rotation.y = -Math.PI / 2;
-    terrain.position.set(P.shiftX || 0, 0, P.shiftZ || 0);
+    terrain.position.set(P.shiftX || 0, P.terrainYOffset || 0, P.shiftZ || 0);
   scene.add(terrain);
     referenceObjects.push(terrain);
 
@@ -789,9 +792,9 @@ function buildTerrain(heightGrid, meta, colorTexture, maskTexture) {
 
   scanSurface = createTerrainScan({ THREE, scene: scene, uniforms, heightAt, maskAt, width: P.tableW, depth: P.tableD });
   scanSurface.points.rotation.y = -Math.PI / 2;
-  scanSurface.points.position.set(P.shiftX || 0, 0, P.shiftZ || 0);
+  scanSurface.points.position.set(P.shiftX || 0, P.terrainYOffset || 0, P.shiftZ || 0);
   scanSurface.links.rotation.y = -Math.PI / 2;
-  scanSurface.links.position.set(P.shiftX || 0, 0, P.shiftZ || 0);
+  scanSurface.links.position.set(P.shiftX || 0, P.terrainYOffset || 0, P.shiftZ || 0);
 }
 
 function buildEnvironment() {
@@ -823,6 +826,8 @@ function buildEnvironment() {
     }
     const circleOuter = makeCircleLine(1.40, 0x50baa3, 0.65);
     const circleInner = makeCircleLine(1.375, 0x50baa3, 0.35);
+    circleOuter.position.y = P.terrainYOffset || 0;
+    circleInner.position.y = P.terrainYOffset || 0;
     scene.add(circleOuter);
     scene.add(circleInner);
     referenceObjects.push(circleOuter, circleInner);
@@ -929,6 +934,11 @@ function setupControls() {
     clearManualFocus();
     P.zoom = Number(event.target.value);
     updateLens();
+    noteCameraMotion();
+  });
+  const terrainYOffset = document.getElementById('terrain-y-offset');
+  if (terrainYOffset) terrainYOffset.addEventListener('input', event => {
+    setTerrainYOffset(event.target.value);
     noteCameraMotion();
   });
   document.querySelectorAll('[data-dir]').forEach(button => button.addEventListener('click', () => {
@@ -1090,6 +1100,30 @@ function setGimbalOffsetControlsVisible(visible) {
   if (row) row.style.display = visible ? 'block' : 'none';
 }
 
+function setTerrainYOffset(value) {
+  const next = clamp(Number(value), -0.30, 0.30);
+  const delta = next - P.terrainYOffset;
+  P.terrainYOffset = next;
+  const input = document.getElementById('terrain-y-offset');
+  const output = document.getElementById('terrain-y-offset-value');
+  if (input) input.value = next.toFixed(3);
+  if (output) output.textContent = `${next >= 0 ? '+' : ''}${next.toFixed(3)} m`;
+
+  if (terrain) terrain.position.y = next;
+  if (scanSurface) {
+    scanSurface.points.position.y = next;
+    scanSurface.links.position.y = next;
+  }
+  for (const object of referenceObjects) {
+    if (object.name?.startsWith('TableCircle_') || object.name === 'HunanBoundarySkirt') object.position.y = next;
+  }
+  for (const marker of siteMarkers) {
+    marker.groundPoint.y += delta;
+    marker.point.y += delta;
+    marker.groundBeacon.position.y = next;
+  }
+}
+
 function setupPoseDiagnosticRecorder() {
   const button = document.getElementById('gyro-diag-record');
   const status = document.getElementById('gyro-diag-status');
@@ -1104,7 +1138,7 @@ function setupPoseDiagnosticRecorder() {
     'motion_alpha_dps', 'motion_beta_dps', 'motion_gamma_dps',
     'motion_gap_ms', 'motion_dt_used_ms', 'motion_hz', 'motion_count',
     'camera_x_m', 'camera_y_m', 'camera_z_m', 'camera_qx', 'camera_qy', 'camera_qz', 'camera_qw',
-    'gimbal_enabled', 'arm_setting_m', 'offset_x_m', 'offset_y_m', 'offset_z_m',
+    'gimbal_enabled', 'arm_setting_m', 'offset_x_m', 'offset_y_m', 'offset_z_m', 'terrain_y_offset_m',
     'motion_fusion', 'motion_gain', 'smooth_ms', 'aligned'
   ];
   let timer = 0;
@@ -1190,6 +1224,7 @@ function setupPoseDiagnosticRecorder() {
       offset_x_m: Number(off.x.toFixed(5)),
       offset_y_m: Number(off.y.toFixed(5)),
       offset_z_m: Number(off.z.toFixed(5)),
+      terrain_y_offset_m: Number(P.terrainYOffset.toFixed(5)),
       motion_fusion: d.motionFusion,
       motion_gain: d.motionGain,
       smooth_ms: P.smoothMs,
@@ -1364,6 +1399,7 @@ function setupPanelDrawer() {
     });
     const skirt = new THREE.Mesh(geo, skirtMat);
     skirt.name = 'HunanBoundarySkirt';
+    skirt.position.y = P.terrainYOffset;
     scene.add(skirt);
     referenceObjects.push(skirt);
     return skirt;
@@ -1381,6 +1417,7 @@ const DEFAULT_SETTINGS = {
   gimbalOffsetX: -0.12,
   gimbalOffsetY: 0.075,
   gimbalOffsetZ: -0.005,
+  terrainYOffset: 0,
 };
 
 function applySettingsToUI(s) {
@@ -1406,6 +1443,7 @@ function applySettingsToUI(s) {
     if (out) out.textContent = `${P.zoom.toFixed(1)}×`;
     updateLens();
   }
+  if (s.terrainYOffset !== undefined) setTerrainYOffset(Number(s.terrainYOffset));
   if (s.lateral !== undefined) {
     P.lateral = Number(s.lateral);
     const el = document.getElementById('lateral');
@@ -1479,6 +1517,7 @@ function setupSettingsPersistence() {
       gimbalOffsetX: P.gimbal ? P.gimbal.off.x : -0.12,
       gimbalOffsetY: P.gimbal ? P.gimbal.off.y : 0.075,
       gimbalOffsetZ: P.gimbal ? P.gimbal.off.z : -0.005,
+      terrainYOffset: P.terrainYOffset,
       savedAt: new Date().toISOString(),
     };
     try {
@@ -1675,6 +1714,11 @@ async function load() {
           zoom: P.zoom, hFovDeg: R.hFovDeg, vFovDeg: R.vFovDeg, aspect: R.aspect,
           tableW: P.tableW, tableD: P.tableD,
           camHeight: P.camHeight, camDist: P.camDist, lateral: P.lateral,
+          terrainYOffset: P.terrainYOffset,
+          terrainY: terrain?.position.y ?? null,
+          scanPointsY: scanSurface?.points.position.y ?? null,
+          scanLinksY: scanSurface?.links.position.y ?? null,
+          overlayY: referenceObjects.filter(o => o.name?.startsWith('TableCircle_') || o.name === 'HunanBoundarySkirt').map(o => o.position.y),
           cull: P.cull, occlusion: P.occlusion,
           markerVisible: R.markerVisible, markerOccluded: R.markerOccluded, markerTotal: R.markerTotal,
           selectedSiteId: R.selectedSiteId ?? null,
@@ -1700,6 +1744,7 @@ async function load() {
       },
       setCull(v) { P.cull = !!v; syncArStatus(); return P.cull; },
       setOcclusion(v) { P.occlusion = !!v; syncArStatus(); return P.occlusion; },
+      setTerrainYOffset,
       setManualLook: v => ar.setManualLook(v),
       nudgeLook: (y, p) => ar.nudgeLook(y, p),
       resetLook: () => ar.resetLook(),
