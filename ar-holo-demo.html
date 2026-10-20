@@ -264,8 +264,11 @@
         <label class="slider-label" for="terrain-y-offset"><span>虚拟沙盘整体上下对位</span><output id="terrain-y-offset-value">+0.000 m</output></label>
         <input id="terrain-y-offset" type="range" min="-0.30" max="0.30" step="0.001" value="0">
         <p class="hint-line" style="margin:2px 0 0;font-size:10px;color:#79978d">正值上移、负值下移；整体移动地形、扫描层、边界和锚点，不改变支架偏心参数。</p>
+        <label class="slider-label" for="terrain-scale"><span>虚拟沙盘大小缩放</span><output id="terrain-scale-value">1.000×</output></label>
+        <input id="terrain-scale" type="range" min="0.50" max="1.80" step="0.005" value="1.000">
+        <p class="hint-line" style="margin:2px 0 0;font-size:10px;color:#79978d">1.000× 为基准；整体缩放地形、扫描层、边界和地标位置，匹配实物沙盘视野大小。</p>
         <button id="gyro-diag-record" type="button" style="width:100%;margin-top:12px">记录姿态诊断（20 秒）</button>
-        <p id="gyro-diag-status" class="camera-status" aria-live="polite" style="margin-top:6px">调整支架 XYZ 偏移后先重新对齐；整体上下对位无需重新对齐。每组录 20 秒，结束后再点按钮下载 CSV。</p>
+        <p id="gyro-diag-status" class="camera-status" aria-live="polite" style="margin-top:6px">调整支架 XYZ 偏移后先重新对齐；沙盘整体上下对位与大小缩放无需重新对齐。每组录 20 秒，结束后再点按钮下载 CSV。</p>
         <button id="gyro-toggle" hidden></button>
         <button id="camera-toggle" hidden></button>
         <button id="ar-reset-view" type="button" style="display:none"></button>
@@ -284,6 +287,6 @@
     </aside>
   </main>
   <div id="loading" class="on">正在加载湖南地形数据…</div>
-  <script type="module" src="./holo-app.js?v=20261020-terrain-y1"></script>
+  <script type="module" src="./holo-app.js?v=20261020-terrain-scale1"></script>
 </body>
 </html>

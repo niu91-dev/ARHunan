@@ -61,6 +61,7 @@ const P = {
   shiftX: 0.00,                                 // 东西向横向居中（0 cm）
   shiftZ: 0.38,                                 // 沿视线向南平移 38 cm（匹配实物沙盘在圆盘中的真实质心）
   terrainYOffset: 0,                            // 虚拟层相对实体沙盘的整体竖直对位（独立于镜头支点偏移）
+  terrainScale: 1.0,                            // 虚拟沙盘整体缩放比例（1.000 为基准尺寸）
   camHeight: 0.58,                              // 相机离沙盘台面高度（实测 0.58 m）
   camDist: 1.93,                                // 相机离沙盘中心水平距离（实测 1.93 m）
   lateral: 0,                                   // 沿边左右位置（m）
@@ -138,19 +139,21 @@ function geoUv(lon, lat) {
 
   /* ---------- 空间朝向变换（顺时针旋转90°，严格匹配现场物理沙盘：右北、左南、上西、下东）---------- */
   function uvToWorld(u, v, y = 0.0) {
-    const p = new THREE.Vector3((u - 0.5) * P.tableW, y, (0.5 - v) * P.tableD);
+    const scale = P.terrainScale ?? 1.0;
+    const p = new THREE.Vector3((u - 0.5) * P.tableW * scale, y * scale, (0.5 - v) * P.tableD * scale);
     p.applyAxisAngle(UP_Y, -Math.PI / 2);
-    p.add(new THREE.Vector3(P.shiftX || 0, 0, P.shiftZ || 0));
+    p.add(new THREE.Vector3(P.shiftX || 0, P.terrainYOffset || 0, P.shiftZ || 0));
     return p;
   }
 
 /* 世界坐标 → 地形 uv。与 holo-ar.js 里那份是同一个映射，这里再写一份是为了
    让 buildSites / 诊断出口不必依赖 ar 实例（加载顺序更简单）。 */
 function worldToUv(x, z, out) {
+    const scale = P.terrainScale ?? 1.0;
     const p = new THREE.Vector3(x - (P.shiftX || 0), 0, z - (P.shiftZ || 0));
     p.applyAxisAngle(UP_Y, +Math.PI / 2);
-    const u = p.x / P.tableW + 0.5;
-    const v = 0.5 - p.z / P.tableD;
+    const u = p.x / (P.tableW * scale) + 0.5;
+    const v = 0.5 - p.z / (P.tableD * scale);
     return (out || new THREE.Vector2()).set(u, v);
 }
 
@@ -487,18 +490,19 @@ function layoutStory(marker) {
    地面定位光柱（照搬参考项目 buildGroundBeacon）
    ============================================================================ */
 function buildGroundBeacon(uv,index) {
-  const radius=.17;
+  const scale = P.terrainScale || 1.0;
+  const radius = .17 * scale;
   const geometry=new THREE.PlaneGeometry(radius*2,radius*2,28,28);
   const positions=geometry.attributes.position;
   for(let i=0;i<positions.count;i++){
     const localX=positions.getX(i),localY=positions.getY(i);
-    const sample=new THREE.Vector2(uv.x+localX/P.tableW,uv.y+localY/P.tableD);
+    const sample=new THREE.Vector2(uv.x+localX/(P.tableW * scale),uv.y+localY/(P.tableD * scale));
       const worldP = uvToWorld(sample.x, sample.y, terrainHeightAt(sample) + 0.004);
-      positions.setXYZ(i, worldP.x, worldP.y, worldP.z);
+      positions.setXYZ(i, worldP.x, worldP.y - (P.terrainYOffset || 0), worldP.z);
   }
   geometry.computeBoundingSphere();
   const material=new THREE.ShaderMaterial({
-    uniforms:{uTime:uniforms.uTime,uEffectGain:uniforms.uEffectGain,uSelected:{value:0},uOtherFocused:{value:0},uPhase:{value:index*.71},uMask:uniforms.uMask,uMapCenter:{value:uv.clone()},uMapSize:{value:new THREE.Vector2(radius*2/P.tableW,radius*2/P.tableD)}},
+    uniforms:{uTime:uniforms.uTime,uEffectGain:uniforms.uEffectGain,uSelected:{value:0},uOtherFocused:{value:0},uPhase:{value:index*.71},uMask:uniforms.uMask,uMapCenter:{value:uv.clone()},uMapSize:{value:new THREE.Vector2(radius*2/(P.tableW * scale),radius*2/(P.tableD * scale))}},
     transparent:true,depthWrite:false,depthTest:true,side:THREE.DoubleSide,blending:THREE.AdditiveBlending,
     vertexShader:`varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,
     fragmentShader:`uniform float uTime,uSelected,uOtherFocused,uPhase,uEffectGain;uniform sampler2D uMask;uniform vec2 uMapCenter,uMapSize;varying vec2 vUv;
@@ -516,6 +520,7 @@ function buildGroundBeacon(uv,index) {
       gl_FragColor=vec4(color,min(light*uEffectGain*.64,.95));}`
   });
   const mesh=new THREE.Mesh(geometry,material);mesh.renderOrder=4;
+  mesh.position.y = P.terrainYOffset || 0;
   // A slim world-space light column joins the floating icon to the actual DEM.
   const beamMaterial=new THREE.ShaderMaterial({
     uniforms:material.uniforms,transparent:true,depthWrite:false,depthTest:true,side:THREE.DoubleSide,blending:THREE.AdditiveBlending,
@@ -524,15 +529,55 @@ function buildGroundBeacon(uv,index) {
       void main(){float fade=pow(1.0-vUv.y,1.1);float alpha=fade*(.28+.24*uSelected)*mix(1.0,.15,uOtherFocused);
       gl_FragColor=vec4(mix(vec3(.65,1.05,1.2),vec3(1.3,1.03,.53),uSelected),min(alpha*uEffectGain,.8));}`
   });
-  const beam=new THREE.Mesh(new THREE.CylinderGeometry(.0025,.008,.24,12,1,true),beamMaterial);
+  const beam=new THREE.Mesh(new THREE.CylinderGeometry(.0025 * scale,.008 * scale,.24 * scale,12,1,true),beamMaterial);
     const centerWorld = uvToWorld(uv.x, uv.y, terrainHeightAt(uv) + 0.124);
-    beam.position.copy(centerWorld);
+    beam.position.set(centerWorld.x, centerWorld.y - (P.terrainYOffset || 0), centerWorld.z);
   beam.renderOrder=5;mesh.add(beam);scene.add(mesh);return mesh;
 }
 
 /* ============================================================================
    地点：图标 / 引线 / 光柱 / 右侧列表
    ============================================================================ */
+function refreshSiteMarker(marker) {
+  const uv = marker.uv;
+  const scale = P.terrainScale || 1.0;
+  const groundPoint = uvToWorld(uv.x, uv.y, terrainHeightAt(uv) + 0.004);
+  marker.groundPoint.copy(groundPoint);
+  marker.point.copy(groundPoint);
+  marker.point.y += 0.27 * scale;
+
+  if (marker.groundBeacon) {
+    const beacon = marker.groundBeacon;
+    beacon.position.y = P.terrainYOffset || 0;
+    const radius = 0.17 * scale;
+    const pos = beacon.geometry.attributes.position;
+    const step = 28;
+    const w = radius * 2, h = radius * 2;
+    let idx = 0;
+    for (let iy = 0; iy <= step; iy++) {
+      const y = iy * (h / step) - radius;
+      for (let ix = 0; ix <= step; ix++) {
+        const x = ix * (w / step) - radius;
+        const sample = new THREE.Vector2(
+          uv.x + x / (P.tableW * scale),
+          uv.y + y / (P.tableD * scale)
+        );
+        const wp = uvToWorld(sample.x, sample.y, terrainHeightAt(sample) + 0.004);
+        pos.setXYZ(idx++, wp.x, wp.y - (P.terrainYOffset || 0), wp.z);
+      }
+    }
+    pos.needsUpdate = true;
+    beacon.geometry.computeBoundingSphere();
+
+    const beam = beacon.children.find(c => c.isMesh);
+    if (beam) {
+      const centerWorld = uvToWorld(uv.x, uv.y, terrainHeightAt(uv) + 0.124);
+      beam.position.set(centerWorld.x, centerWorld.y - (P.terrainYOffset || 0), centerWorld.z);
+      beam.scale.set(scale, scale, scale);
+    }
+  }
+}
+
 function disposeSites() {
   for (const marker of siteMarkers) {
     marker.groundBeacon.geometry.dispose();
@@ -553,10 +598,8 @@ function buildSites() {
   siteMarkers = SITES.map((site, index) => {
     const uv = geoUv(site.lon, site.lat);
     const groundPoint = uvToWorld(uv.x, uv.y, terrainHeightAt(uv) + 0.004);
-    groundPoint.y += P.terrainYOffset;
-    const point = groundPoint.clone(); point.y += .27;
+    const point = groundPoint.clone(); point.y += 0.27 * (P.terrainScale || 1.0);
     const groundBeacon = buildGroundBeacon(uv, index);
-    groundBeacon.position.y = P.terrainYOffset;
     const stem = document.createElementNS('http://www.w3.org/2000/svg','path');
     document.getElementById('site-stems').append(stem);
     const button = document.createElement('button');
@@ -732,6 +775,7 @@ function buildTerrain(heightGrid, meta, colorTexture, maskTexture) {
   terrain.name = 'HunanTerrain';
     terrain.rotation.y = -Math.PI / 2;
     terrain.position.set(P.shiftX || 0, P.terrainYOffset || 0, P.shiftZ || 0);
+    terrain.scale.set(P.terrainScale || 1.0, P.terrainScale || 1.0, P.terrainScale || 1.0);
   scene.add(terrain);
     referenceObjects.push(terrain);
 
@@ -793,8 +837,10 @@ function buildTerrain(heightGrid, meta, colorTexture, maskTexture) {
   scanSurface = createTerrainScan({ THREE, scene: scene, uniforms, heightAt, maskAt, width: P.tableW, depth: P.tableD });
   scanSurface.points.rotation.y = -Math.PI / 2;
   scanSurface.points.position.set(P.shiftX || 0, P.terrainYOffset || 0, P.shiftZ || 0);
+  scanSurface.points.scale.set(P.terrainScale || 1.0, P.terrainScale || 1.0, P.terrainScale || 1.0);
   scanSurface.links.rotation.y = -Math.PI / 2;
   scanSurface.links.position.set(P.shiftX || 0, P.terrainYOffset || 0, P.shiftZ || 0);
+  scanSurface.links.scale.set(P.terrainScale || 1.0, P.terrainScale || 1.0, P.terrainScale || 1.0);
 }
 
 function buildEnvironment() {
@@ -939,6 +985,11 @@ function setupControls() {
   const terrainYOffset = document.getElementById('terrain-y-offset');
   if (terrainYOffset) terrainYOffset.addEventListener('input', event => {
     setTerrainYOffset(event.target.value);
+    noteCameraMotion();
+  });
+  const terrainScale = document.getElementById('terrain-scale');
+  if (terrainScale) terrainScale.addEventListener('input', event => {
+    setTerrainScale(event.target.value);
     noteCameraMotion();
   });
   document.querySelectorAll('[data-dir]').forEach(button => button.addEventListener('click', () => {
@@ -1102,7 +1153,6 @@ function setGimbalOffsetControlsVisible(visible) {
 
 function setTerrainYOffset(value) {
   const next = clamp(Number(value), -0.30, 0.30);
-  const delta = next - P.terrainYOffset;
   P.terrainYOffset = next;
   const input = document.getElementById('terrain-y-offset');
   const output = document.getElementById('terrain-y-offset-value');
@@ -1118,9 +1168,28 @@ function setTerrainYOffset(value) {
     if (object.name?.startsWith('TableCircle_') || object.name === 'HunanBoundarySkirt') object.position.y = next;
   }
   for (const marker of siteMarkers) {
-    marker.groundPoint.y += delta;
-    marker.point.y += delta;
-    marker.groundBeacon.position.y = next;
+    refreshSiteMarker(marker);
+  }
+}
+
+function setTerrainScale(value) {
+  const next = clamp(Number(value), 0.50, 2.00);
+  P.terrainScale = next;
+  const input = document.getElementById('terrain-scale');
+  const output = document.getElementById('terrain-scale-value');
+  if (input) input.value = next.toFixed(3);
+  if (output) output.textContent = `${next.toFixed(3)}×`;
+
+  if (terrain) terrain.scale.set(next, next, next);
+  if (scanSurface) {
+    scanSurface.points.scale.set(next, next, next);
+    scanSurface.links.scale.set(next, next, next);
+  }
+  for (const object of referenceObjects) {
+    if (object.name === 'HunanBoundarySkirt') object.scale.set(next, next, next);
+  }
+  for (const marker of siteMarkers) {
+    refreshSiteMarker(marker);
   }
 }
 
@@ -1138,7 +1207,7 @@ function setupPoseDiagnosticRecorder() {
     'motion_alpha_dps', 'motion_beta_dps', 'motion_gamma_dps',
     'motion_gap_ms', 'motion_dt_used_ms', 'motion_hz', 'motion_count',
     'camera_x_m', 'camera_y_m', 'camera_z_m', 'camera_qx', 'camera_qy', 'camera_qz', 'camera_qw',
-    'gimbal_enabled', 'arm_setting_m', 'offset_x_m', 'offset_y_m', 'offset_z_m', 'terrain_y_offset_m',
+    'gimbal_enabled', 'arm_setting_m', 'offset_x_m', 'offset_y_m', 'offset_z_m', 'terrain_y_offset_m', 'terrain_scale',
     'motion_fusion', 'motion_gain', 'smooth_ms', 'aligned'
   ];
   let timer = 0;
@@ -1225,6 +1294,7 @@ function setupPoseDiagnosticRecorder() {
       offset_y_m: Number(off.y.toFixed(5)),
       offset_z_m: Number(off.z.toFixed(5)),
       terrain_y_offset_m: Number(P.terrainYOffset.toFixed(5)),
+      terrain_scale: Number(P.terrainScale.toFixed(5)),
       motion_fusion: d.motionFusion,
       motion_gain: d.motionGain,
       smooth_ms: P.smoothMs,
@@ -1375,8 +1445,10 @@ function setupPanelDrawer() {
       const nextIdx = (i + 1) % N;
       const [u0, v0] = uvList[i];
       const [u1, v1] = uvList[nextIdx];
-      const pTop0 = uvToWorld(u0, v0, terrainHeightAt({ x: u0, y: v0 }));
-      const pTop1 = uvToWorld(u1, v1, terrainHeightAt({ x: u1, y: v1 }));
+      const pTop0 = new THREE.Vector3((u0 - 0.5) * P.tableW, terrainHeightAt({ x: u0, y: v0 }), (0.5 - v0) * P.tableD);
+      pTop0.applyAxisAngle(UP_Y, -Math.PI / 2);
+      const pTop1 = new THREE.Vector3((u1 - 0.5) * P.tableW, terrainHeightAt({ x: u1, y: v1 }), (0.5 - v1) * P.tableD);
+      pTop1.applyAxisAngle(UP_Y, -Math.PI / 2);
       const yBottom = 0.002;
       positions.push(
         pTop0.x, pTop0.y, pTop0.z,  pTop0.x, yBottom, pTop0.z,  pTop1.x, yBottom, pTop1.z,
@@ -1399,7 +1471,8 @@ function setupPanelDrawer() {
     });
     const skirt = new THREE.Mesh(geo, skirtMat);
     skirt.name = 'HunanBoundarySkirt';
-    skirt.position.y = P.terrainYOffset;
+    skirt.position.set(P.shiftX || 0, P.terrainYOffset || 0, P.shiftZ || 0);
+    skirt.scale.set(P.terrainScale || 1.0, P.terrainScale || 1.0, P.terrainScale || 1.0);
     scene.add(skirt);
     referenceObjects.push(skirt);
     return skirt;
@@ -1418,6 +1491,7 @@ const DEFAULT_SETTINGS = {
   gimbalOffsetY: 0.075,
   gimbalOffsetZ: -0.005,
   terrainYOffset: 0,
+  terrainScale: 1.0,
 };
 
 function applySettingsToUI(s) {
@@ -1444,6 +1518,7 @@ function applySettingsToUI(s) {
     updateLens();
   }
   if (s.terrainYOffset !== undefined) setTerrainYOffset(Number(s.terrainYOffset));
+  if (s.terrainScale !== undefined) setTerrainScale(Number(s.terrainScale));
   if (s.lateral !== undefined) {
     P.lateral = Number(s.lateral);
     const el = document.getElementById('lateral');
@@ -1518,6 +1593,7 @@ function setupSettingsPersistence() {
       gimbalOffsetY: P.gimbal ? P.gimbal.off.y : 0.075,
       gimbalOffsetZ: P.gimbal ? P.gimbal.off.z : -0.005,
       terrainYOffset: P.terrainYOffset,
+      terrainScale: P.terrainScale,
       savedAt: new Date().toISOString(),
     };
     try {
@@ -1715,6 +1791,8 @@ async function load() {
           tableW: P.tableW, tableD: P.tableD,
           camHeight: P.camHeight, camDist: P.camDist, lateral: P.lateral,
           terrainYOffset: P.terrainYOffset,
+          terrainScale: P.terrainScale,
+          terrainScaleVec: terrain?.scale.toArray() ?? null,
           terrainY: terrain?.position.y ?? null,
           scanPointsY: scanSurface?.points.position.y ?? null,
           scanLinksY: scanSurface?.links.position.y ?? null,
@@ -1745,6 +1823,7 @@ async function load() {
       setCull(v) { P.cull = !!v; syncArStatus(); return P.cull; },
       setOcclusion(v) { P.occlusion = !!v; syncArStatus(); return P.occlusion; },
       setTerrainYOffset,
+      setTerrainScale,
       setManualLook: v => ar.setManualLook(v),
       nudgeLook: (y, p) => ar.nudgeLook(y, p),
       resetLook: () => ar.resetLook(),
