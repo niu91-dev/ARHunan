@@ -1209,7 +1209,19 @@ function syncArStatus() {
   if (!st) return;
   const d = ar.debug;
   const parts = [];
-  parts.push(d.aligned ? '已对齐' : d.haveOrient ? '等待对齐' : '无陀螺仪数据');
+  if (d.aligned) {
+    parts.push('已对齐');
+  } else if (d.haveOrient) {
+    parts.push('等待对齐');
+  } else {
+    if (!window.isSecureContext) {
+      parts.push('非 HTTPS（传感器已被拦截）');
+    } else if (d.orientN > 0 || d.motionN > 0) {
+      parts.push(`传感器就绪 (${d.orientN || d.motionN} 帧)`);
+    } else {
+      parts.push('无陀螺仪数据（请检查浏览器运动传感器权限）');
+    }
+  }
   parts.push(ar.isManualLook() ? '未开启陀螺仪' : '陀螺仪跟随中');
   parts.push(`视野内 ${R.markerVisible ?? 0}/${R.markerTotal ?? SITES.length}`);
   if (R.markerOccluded) parts.push(`被遮挡 ${R.markerOccluded}`);
@@ -1437,14 +1449,14 @@ function setupArControls() {
   const gyroBtn = document.getElementById('gyro-toggle');
   if (gyroBtn) {
     gyroBtn.addEventListener('click', async () => {
-      if (!ar.isManualLook()) { ar.setManualLook(true); syncArStatus(); return; }
-      const perm = await ar.requestPermission();
-      if (!perm.ok) { showToast('陀螺仪权限未授予：' + perm.reason); syncArStatus(); return; }
       ar.attach();
       ar.setManualLook(false);
       hint.textContent = '转动平板改变视线 · 点击地形触发扫描';
       const gate = document.getElementById('ar-gate');
       if (gate) gate.hidden = true;
+      const perm = await ar.requestPermission();
+      if (!perm.ok) { showToast('陀螺仪权限未授予：' + perm.reason); syncArStatus(); return; }
+      showToast('已激活陀螺仪跟随');
       syncArStatus();
     });
   }
