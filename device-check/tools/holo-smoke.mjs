@@ -151,6 +151,24 @@ if (savedObj && typeof savedObj.camHeight === 'number' && savedObj.savedAt) {
   bad('保存按钮未成功将设置存入 localStorage');
 }
 
+/* 整体竖直对位必须同步移动 DEM、扫描层、边界与屏幕锚点。 */
+const yShift = await evalJson(`(()=>{
+  const before=window.__holo.markerWorld('zhangjiajie');
+  const slider=document.getElementById('terrain-y-offset');
+  slider.value='-0.035'; slider.dispatchEvent(new Event('input',{bubbles:true}));
+  const after=window.__holo.markerWorld('zhangjiajie');
+  const s=window.__holo.state;
+  return {value:s.terrainYOffset,terrain:s.terrainY,points:s.scanPointsY,links:s.scanLinksY,
+    overlays:s.overlayY,markerDelta:Number((after.ground[1]-before.ground[1]).toFixed(3)),
+    readout:document.getElementById('terrain-y-offset-value').textContent};
+})()`);
+const yShiftOk = yShift.value === -0.035 && yShift.terrain === -0.035 &&
+  yShift.points === -0.035 && yShift.links === -0.035 && yShift.overlays.every(y => y === -0.035) &&
+  yShift.markerDelta === -0.035 && yShift.readout === '-0.035 m';
+(yShiftOk ? ok : bad)('虚拟沙盘整体 Y 对位同步移动地形/扫描/边界/锚点（' + JSON.stringify(yShift) + '）');
+await evaluate(`document.getElementById('terrain-y-offset').value='0';
+  document.getElementById('terrain-y-offset').dispatchEvent(new Event('input',{bubbles:true})); 'ok'`);
+
 const openShot = await send('Page.captureScreenshot', { format: 'png' });
 writeFileSync(join(HERE, '_holo_open.png'), Buffer.from(openShot.data, 'base64'));
 await evaluate(`document.getElementById('btn-close-panel').click()`);
