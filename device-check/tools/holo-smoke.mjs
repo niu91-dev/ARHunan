@@ -192,6 +192,25 @@ const scaleOk = scaleShift.scale === 1.2 &&
 await evaluate(`document.getElementById('terrain-scale').value='1.000';
   document.getElementById('terrain-scale').dispatchEvent(new Event('input',{bubbles:true})); 'ok'`);
 
+/* 画面上下俯仰对位滑块验证 */
+const pitchShift = await evalJson(`(()=>{
+  window.__holo.setManualLook(true);
+  const p0 = window.__holo.state.viewAngles.pitch;
+  const slider = document.getElementById('pitch-offset');
+  slider.value = '3.5'; slider.dispatchEvent(new Event('input', {bubbles:true}));
+  const s = window.__holo.state;
+  const p1 = s.viewAngles.pitch;
+  return {
+    offset: s.pitchOffsetDeg,
+    deltaPitch: Number((p1 - p0).toFixed(1)),
+    readout: document.getElementById('pitch-offset-value').textContent
+  };
+})()`);
+const pitchOk = pitchShift.offset === 3.5 && Math.abs(Math.abs(pitchShift.deltaPitch) - 3.5) <= 0.2 && pitchShift.readout === '+3.5°';
+(pitchOk ? ok : bad)('画面上下俯仰对位同步调整镜头俯角（' + JSON.stringify(pitchShift) + '）');
+await evaluate(`document.getElementById('pitch-offset').value='0';
+  document.getElementById('pitch-offset').dispatchEvent(new Event('input',{bubbles:true})); 'ok'`);
+
 const openShot = await send('Page.captureScreenshot', { format: 'png' });
 writeFileSync(join(HERE, '_holo_open.png'), Buffer.from(openShot.data, 'base64'));
 await evaluate(`document.getElementById('btn-close-panel').click()`);
