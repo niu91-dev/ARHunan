@@ -235,10 +235,11 @@
         <div class="section-title"><span>02</span><h2>AR 交互与校准</h2></div>
         <div class="camera-actions">
           <button id="ar-align" type="button">重新对齐</button>
-          <button id="reference-toggle" type="button" aria-pressed="false">关闭参考模型</button>
+          <button id="gyro-toggle" type="button">开启陀螺仪跟随</button>
         </div>
         <div class="camera-actions" style="margin-top:8px">
-          <button id="center-scan" class="scan-button" style="margin:0;min-height:38px;height:auto;grid-column:1 / -1"><span>◎</span> 发起中心扫描</button>
+          <button id="reference-toggle" type="button" aria-pressed="false">关闭参考模型</button>
+          <button id="center-scan" class="scan-button" style="margin:0;min-height:38px;height:auto"><span>◎</span> 发起中心扫描</button>
         </div>
         <div class="toggle-row" style="margin-top:12px">
           <div><strong>待机中心涟漪</strong><small>准心落在地形上向外扩散</small></div>
@@ -266,7 +267,6 @@
         <label class="slider-label" for="terrain-scale"><span>虚拟沙盘大小缩放</span><output id="terrain-scale-value">1.000×</output></label>
         <input id="terrain-scale" type="range" min="0.50" max="1.80" step="0.005" value="1.000">
         <p class="hint-line" style="margin:2px 0 0;font-size:10px;color:#79978d">1.000× 为基准；整体缩放地形、扫描层、边界和地标位置，匹配实物沙盘视野大小。</p>
-        <button id="gyro-toggle" hidden></button>
         <button id="camera-toggle" hidden></button>
         <button id="ar-reset-view" type="button" style="display:none"></button>
         <p id="ar-status" class="camera-status" style="margin-top:10px">摄像头与陀螺仪已自动启用</p>
@@ -284,6 +284,6 @@
     </aside>
   </main>
   <div id="loading" class="on">正在加载湖南地形数据…</div>
-  <script type="module" src="./holo-app.js?v=20261020-fullscreen1"></script>
+  <script type="module" src="./holo-app.js?v=20261020-gyro-fix1"></script>
 </body>
 </html>
