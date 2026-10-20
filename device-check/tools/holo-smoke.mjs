@@ -169,6 +169,29 @@ const yShiftOk = yShift.value === -0.035 && yShift.terrain === -0.035 &&
 await evaluate(`document.getElementById('terrain-y-offset').value='0';
   document.getElementById('terrain-y-offset').dispatchEvent(new Event('input',{bubbles:true})); 'ok'`);
 
+/* 虚拟沙盘大小缩放必须同步缩放地形、扫描层、边界与地标 */
+const scaleShift = await evalJson(`(()=>{
+  const before=window.__holo.markerWorld('zhangjiajie');
+  const slider=document.getElementById('terrain-scale');
+  slider.value='1.200'; slider.dispatchEvent(new Event('input',{bubbles:true}));
+  const after=window.__holo.markerWorld('zhangjiajie');
+  const s=window.__holo.state;
+  const d0 = Math.hypot(before.ground[0] - (s.shiftX||0), before.ground[2] - (s.shiftZ||0.38));
+  const d1 = Math.hypot(after.ground[0] - (s.shiftX||0), after.ground[2] - (s.shiftZ||0.38));
+  return {
+    scale: s.terrainScale,
+    scaleVec: s.terrainScaleVec,
+    ratio: Number((d1 / d0).toFixed(3)),
+    readout: document.getElementById('terrain-scale-value').textContent
+  };
+})()`);
+const scaleOk = scaleShift.scale === 1.2 &&
+  Array.isArray(scaleShift.scaleVec) && Math.abs(scaleShift.scaleVec[0] - 1.2) < 1e-4 &&
+  Math.abs(scaleShift.ratio - 1.2) < 0.01 && scaleShift.readout === '1.200×';
+(scaleOk ? ok : bad)('虚拟沙盘大小缩放同步缩放地形/扫描/边界/锚点（' + JSON.stringify(scaleShift) + '）');
+await evaluate(`document.getElementById('terrain-scale').value='1.000';
+  document.getElementById('terrain-scale').dispatchEvent(new Event('input',{bubbles:true})); 'ok'`);
+
 const openShot = await send('Page.captureScreenshot', { format: 'png' });
 writeFileSync(join(HERE, '_holo_open.png'), Buffer.from(openShot.data, 'base64'));
 await evaluate(`document.getElementById('btn-close-panel').click()`);

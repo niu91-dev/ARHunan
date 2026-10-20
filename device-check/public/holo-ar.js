@@ -644,7 +644,12 @@ export function createArCamera({ camera, params, hooks = {} }) {
      geoUv(lon,lat) 已经把经纬度变成了 uv，地形网格的 uv 直接线性映射到 x/z。 */
   function worldToUv(x, z, out) {
     const P = params();
-    return (out || new THREE.Vector2()).set(x / P.tableW + 0.5, 0.5 - z / P.tableD);
+    const scale = P.terrainScale || 1.0;
+    const p = new THREE.Vector3(x - (P.shiftX || 0), 0, z - (P.shiftZ || 0));
+    p.applyAxisAngle(UP_Y, +Math.PI / 2);
+    const u = p.x / (P.tableW * scale) + 0.5;
+    const v = 0.5 - p.z / (P.tableD * scale);
+    return (out || new THREE.Vector2()).set(u, v);
   }
 
   /* ---------- 遮挡：沿视线 48 步高度场行军 ----------
@@ -655,13 +660,22 @@ export function createArCamera({ camera, params, hooks = {} }) {
     const P = params();
     const thr = wasOccluded ? OCC_EPS_OUT : OCC_EPS_IN;
     const dx = target.x - camPos.x, dy = target.y - camPos.y, dz = target.z - camPos.z;
-    const halfW = P.tableW * 0.5, halfD = P.tableD * 0.5;
+    const scale = P.terrainScale || 1.0;
+    const halfW = P.tableW * scale * 0.5, halfD = P.tableD * scale * 0.5;
+    const centerX = P.shiftX || 0, centerZ = P.shiftZ || 0;
+    const yOff = P.terrainYOffset || 0;
     for (let i = 1; i <= OCC_STEPS; i++) {
       const t = OCC_T0 + (OCC_T1 - OCC_T0) * (i / OCC_STEPS);
       const x = camPos.x + dx * t, y = camPos.y + dy * t, z = camPos.z + dz * t;
       /* 采样点跑到沙盘外就不比了 —— 外面没有地形，比出来的都是假的 */
-      if (Math.abs(x) > halfW || Math.abs(z) > halfD) continue;
-      if (P.heightAtUv(worldToUv(x, z, _occUv)) - y > thr) return true;
+      const p = new THREE.Vector3(x - centerX, 0, z - centerZ);
+      p.applyAxisAngle(UP_Y, +Math.PI / 2);
+      if (Math.abs(p.x) > halfW || Math.abs(p.z) > halfD) continue;
+      const u = p.x / (P.tableW * scale) + 0.5;
+      const v = 0.5 - p.z / (P.tableD * scale);
+      _occUv.set(u, v);
+      const fieldY = P.heightAtUv(_occUv) * scale + yOff;
+      if (fieldY - y > thr) return true;
     }
     return false;
   }
@@ -685,13 +699,23 @@ export function createArCamera({ camera, params, hooks = {} }) {
     const P = params();
     const out = [];
     const dx = target.x - camPos.x, dy = target.y - camPos.y, dz = target.z - camPos.z;
+    const scale = P.terrainScale || 1.0;
+    const halfW = P.tableW * scale * 0.5, halfD = P.tableD * scale * 0.5;
+    const centerX = P.shiftX || 0, centerZ = P.shiftZ || 0;
+    const yOff = P.terrainYOffset || 0;
     for (let i = 1; i <= n; i++) {
       const t = OCC_T0 + (OCC_T1 - OCC_T0) * (i / n);
       const x = camPos.x + dx * t, y = camPos.y + dy * t, z = camPos.z + dz * t;
-      if (Math.abs(x) > P.tableW * 0.5 || Math.abs(z) > P.tableD * 0.5) continue;
+      const p = new THREE.Vector3(x - centerX, 0, z - centerZ);
+      p.applyAxisAngle(UP_Y, +Math.PI / 2);
+      if (Math.abs(p.x) > halfW || Math.abs(p.z) > halfD) continue;
+      const u = p.x / (P.tableW * scale) + 0.5;
+      const v = 0.5 - p.z / (P.tableD * scale);
+      _occUv.set(u, v);
+      const fieldY = P.heightAtUv(_occUv) * scale + yOff;
       out.push({
         t: Number(t.toFixed(5)), rayY: y,
-        fieldY: P.heightAtUv(worldToUv(x, z, _occUv)),
+        fieldY,
         meshY: P.meshYAt ? P.meshYAt(x, z) : null,
       });
     }
