@@ -20,7 +20,7 @@ import * as THREE from 'three';
 import { SITES, GEO_BOUNDS } from './sites.js';
 import { createTerrainScan } from './scan-surface.js';
 import { setupCameraPreview } from './camera-preview.js';
-import { createArCamera, OCCLUSION_THRESHOLDS } from './holo-ar.js?v=20261019-pose-diag1';
+import { createArCamera, OCCLUSION_THRESHOLDS } from './holo-ar.js?v=20261020-clean-calib1';
 
 const scanReview = new URLSearchParams(location.search).get('review') === 'scan';
 document.body.classList.toggle('scan-review', scanReview);
@@ -66,6 +66,7 @@ const P = {
   shiftZ: 0.38,                                 // 沿视线向南平移 38 cm（匹配实物沙盘在圆盘中的真实质心）
   terrainYOffset: 0,                            // 虚拟层相对实体沙盘的整体竖直对位（独立于镜头支点偏移）
   terrainScale: 1.0,                            // 虚拟沙盘整体缩放比例（1.000 为基准尺寸）
+  pitchOffsetDeg: 0,                            // 镜头光学俯仰零位微调（度，正值画面整体上移、负值下移）
   camHeight: 0.58,                              // 相机离沙盘台面高度（实测 0.58 m）
   camDist: 1.93,                                // 相机离沙盘中心水平距离（实测 1.93 m）
   lateral: 0,                                   // 沿边左右位置（m）
@@ -916,7 +917,7 @@ function updateLens() {
   const nominalHFovDeg = Number(THREE.MathUtils.radToDeg(targetHorizontal).toFixed(1));
   if (zv) {
     if (aspectScaleX < 0.999) {
-      zv.textContent = `${P.zoom.toFixed(2)}× (等效 ${hFovDeg}° / 标称 ${nominalHFovDeg}°)`;
+      zv.textContent = `${P.zoom.toFixed(2)}× (${hFovDeg}° / ${nominalHFovDeg}°)`;
     } else {
       zv.textContent = `${P.zoom.toFixed(2)}× (${hFovDeg}°)`;
     }
@@ -968,7 +969,7 @@ function setupControls() {
     input.addEventListener('input', () => {
       clearManualFocus();
       P[prop] = Number(input.value);
-      document.getElementById(`${key}-value`).textContent = `${P[prop].toFixed(1)} m`;
+      document.getElementById(`${key}-value`).textContent = `${P[prop].toFixed(2)} m`;
       if (ar.isManualLook()) ar.resetLook();
       noteCameraMotion();
       syncArStatus();
@@ -983,6 +984,11 @@ function setupControls() {
   const terrainYOffset = document.getElementById('terrain-y-offset');
   if (terrainYOffset) terrainYOffset.addEventListener('input', event => {
     setTerrainYOffset(event.target.value);
+    noteCameraMotion();
+  });
+  const pitchOffset = document.getElementById('pitch-offset');
+  if (pitchOffset) pitchOffset.addEventListener('input', event => {
+    setPitchOffset(event.target.value);
     noteCameraMotion();
   });
   const terrainScale = document.getElementById('terrain-scale');
@@ -1147,6 +1153,16 @@ function setGimbalOffset(x, y, z) {
 function setGimbalOffsetControlsVisible(visible) {
   const row = document.getElementById('gimbal-offset-row');
   if (row) row.style.display = visible ? 'block' : 'none';
+}
+
+function setPitchOffset(value) {
+  const next = clamp(Number(value), -15, 15);
+  P.pitchOffsetDeg = next;
+  const input = document.getElementById('pitch-offset');
+  const output = document.getElementById('pitch-offset-value');
+  if (input) input.value = next.toFixed(1);
+  if (output) output.textContent = `${next >= 0 ? '+' : ''}${next.toFixed(1)}°`;
+  if (ar && ar.isManualLook()) ar.resetLook();
 }
 
 function setTerrainYOffset(value) {
@@ -1349,12 +1365,16 @@ function setupArControls() {
     });
   }
   document.getElementById('ar-align').addEventListener('click', () => { ar.align(false); noteCameraMotion(); });
-  document.getElementById('ar-zero').addEventListener('click', () => { ar.zeroDrift(); noteCameraMotion(); });
+  const az = document.getElementById('ar-zero');
+  if (az) az.addEventListener('click', () => { ar.zeroDrift(); noteCameraMotion(); });
   const rz = document.getElementById('ar-reset-view');
   if (rz) rz.addEventListener('click', () => { ar.resetLook(); noteCameraMotion(); });
-  document.getElementById('ar-cull').addEventListener('change', e => { P.cull = e.target.checked; syncArStatus(); });
-  document.getElementById('ar-occl').addEventListener('change', e => { P.occlusion = e.target.checked; syncArStatus(); });
-  document.getElementById('ar-fusion').addEventListener('change', e => { ar.setMotionFusion(e.target.checked); syncArStatus(); });
+  const ac = document.getElementById('ar-cull');
+  if (ac) ac.addEventListener('change', e => { P.cull = e.target.checked; syncArStatus(); });
+  const ao = document.getElementById('ar-occl');
+  if (ao) ao.addEventListener('change', e => { P.occlusion = e.target.checked; syncArStatus(); });
+  const af = document.getElementById('ar-fusion');
+  if (af) af.addEventListener('change', e => { ar.setMotionFusion(e.target.checked); syncArStatus(); });
   const gt = document.getElementById('gimbal-toggle');
   const offsetInputs = ['x', 'y', 'z'].map(axis => document.getElementById(`gimbal-offset-${axis}`));
   setGimbalOffset(P.gimbal.off.x, P.gimbal.off.y, P.gimbal.off.z);
@@ -1491,6 +1511,7 @@ const DEFAULT_SETTINGS = {
   gimbalOffsetZ: -0.005,
   terrainYOffset: 0,
   terrainScale: 1.0,
+  pitchOffsetDeg: 0,
 };
 
 function applySettingsToUI(s) {
@@ -1506,7 +1527,7 @@ function applySettingsToUI(s) {
     const el = document.getElementById('distance');
     if (el) el.value = P.camDist;
     const out = document.getElementById('distance-value');
-    if (out) out.textContent = `${P.camDist.toFixed(1)} m`;
+    if (out) out.textContent = `${P.camDist.toFixed(2)} m`;
   }
   if (s.zoom !== undefined) {
     P.zoom = Number(s.zoom);
@@ -1518,12 +1539,13 @@ function applySettingsToUI(s) {
   }
   if (s.terrainYOffset !== undefined) setTerrainYOffset(Number(s.terrainYOffset));
   if (s.terrainScale !== undefined) setTerrainScale(Number(s.terrainScale));
+  if (s.pitchOffsetDeg !== undefined) setPitchOffset(Number(s.pitchOffsetDeg));
   if (s.lateral !== undefined) {
     P.lateral = Number(s.lateral);
     const el = document.getElementById('lateral');
     if (el) el.value = P.lateral;
     const out = document.getElementById('lateral-value');
-    if (out) out.textContent = `${P.lateral.toFixed(1)} m`;
+    if (out) out.textContent = `${P.lateral.toFixed(2)} m`;
   }
   if (s.idle !== undefined) {
     settings.idle = !!s.idle;
@@ -1599,6 +1621,7 @@ function setupSettingsPersistence() {
       gimbalOffsetZ: P.gimbal ? P.gimbal.off.z : -0.005,
       terrainYOffset: P.terrainYOffset,
       terrainScale: P.terrainScale,
+      pitchOffsetDeg: P.pitchOffsetDeg,
       savedAt: new Date().toISOString(),
     };
     try {
@@ -1798,6 +1821,7 @@ async function load() {
           camHeight: P.camHeight, camDist: P.camDist, lateral: P.lateral,
           terrainYOffset: P.terrainYOffset,
           terrainScale: P.terrainScale,
+          pitchOffsetDeg: P.pitchOffsetDeg,
           terrainScaleVec: terrain?.scale.toArray() ?? null,
           terrainY: terrain?.position.y ?? null,
           scanPointsY: scanSurface?.points.position.y ?? null,
@@ -1830,6 +1854,7 @@ async function load() {
       setOcclusion(v) { P.occlusion = !!v; syncArStatus(); return P.occlusion; },
       setTerrainYOffset,
       setTerrainScale,
+      setPitchOffset,
       setManualLook: v => ar.setManualLook(v),
       nudgeLook: (y, p) => ar.nudgeLook(y, p),
       resetLook: () => ar.resetLook(),

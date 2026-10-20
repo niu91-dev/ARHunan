@@ -311,15 +311,8 @@ export function createArCamera({ camera, params, hooks = {} }) {
   function alignNow(silent) {
     if (!haveOrient) { flash('还没收到陀螺仪数据'); return false; }
     applyNominalPosition();
-    /* 云台 drive='gyro' 的基准必须在【对齐这一刻】标定 ——
-       因为只有对齐时我们才确信相机真的在标称位置上（r0 才算得对）。
-       放在别处标定（比如「切到 gyro 驱动的那一下」）会取到一个转过角的
-       陈旧位置，r0 就带上一段多余的平移，之后每一帧的位置都是错的。
-       实测后果：off=0（本该位置恒定）也会漂 8.0 cm。 */
     const P = params();
-    if (P.gimbal.on && P.gimbal.drive === 'gyro') captureGyroPosRef();
     const q = readDeviceQuat(qDev.clone());
-    const target = new THREE.Vector3(0, 0, 0).sub(camera.position).normalize();
 
     /* ---------- 世界系航向对齐（彻底消除俯仰引发的滚转错位）----------
        为什么不能在设备局部系里做 lookAt 并右乘：
@@ -332,6 +325,12 @@ export function createArCamera({ camera, params, hooks = {} }) {
     const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(q);
     const yawAngle = Math.atan2(fwd.x, -fwd.z);
     alignQuat.setFromAxisAngle(UP_Y, yawAngle);
+    camera.quaternion.copy(alignQuat).multiply(q);
+    if (P.pitchOffsetDeg) {
+      _gqPitch.setFromAxisAngle(AXIS_X, THREE.MathUtils.degToRad(-P.pitchOffsetDeg));
+      camera.quaternion.multiply(_gqPitch);
+    }
+    if (P.gimbal && P.gimbal.on && P.gimbal.drive === 'gyro') captureGyroPosRef();
 
     aligned = true;
     snapPose = true;
@@ -456,7 +455,8 @@ export function createArCamera({ camera, params, hooks = {} }) {
       ? P.nominalPitch
       : THREE.MathUtils.radToDeg(Math.atan2(eye.y, horiz));
     const yaw = baseYaw + THREE.MathUtils.degToRad(yawDeg);
-    const pitch = THREE.MathUtils.degToRad(pitchDeg === null ? basePitch : pitchDeg);
+    const rawPitch = (pitchDeg === null ? basePitch : pitchDeg) + (P && P.pitchOffsetDeg ? P.pitchOffsetDeg : 0);
+    const pitch = THREE.MathUtils.degToRad(rawPitch);
     const dir = new THREE.Vector3(
       Math.sin(yaw) * Math.cos(pitch),
       -Math.sin(pitch),
@@ -552,6 +552,10 @@ export function createArCamera({ camera, params, hooks = {} }) {
     if (haveOrient && aligned) {
       readDeviceQuat(qDev);
       _qGoal.copy(alignQuat).multiply(qDev);
+      if (P.pitchOffsetDeg) {
+        _gqPitch.setFromAxisAngle(AXIS_X, THREE.MathUtils.degToRad(-P.pitchOffsetDeg));
+        _qGoal.multiply(_gqPitch);
+      }
       /* ---------- 姿态平滑 ----------
          静止时 Android 把 deviceorientation 降到 ~1 Hz，直接 copy 会让视角
          「一跳一跳」。用 slerp 按帧率做指数平滑，时间常数 τ = smoothMs：

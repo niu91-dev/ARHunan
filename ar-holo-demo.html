@@ -210,8 +210,8 @@
           <label class="slider-label" for="zoom"><span>镜头缩放 (FOV)</span><output id="zoom-value">1.00×</output></label>
           <input id="zoom" type="range" min="0.8" max="2.5" step="0.01" value="1.00">
         <p class="hint-line" style="margin:2px 0 10px;font-size:10px;color:#79978d">默认 1.00× 匹配小米 Pad 6 后摄（等效 28mm / 标称 63.7° HFOV）并自动适配 16:9 裁切</p>
-        <label class="slider-label" for="lateral"><span>沿边左右位置</span><output id="lateral-value">0.0 m</output></label>
-        <input id="lateral" type="range" min="-1.4" max="1.4" step="0.05" value="0">
+        <label class="slider-label" for="lateral"><span>沿边左右位置</span><output id="lateral-value">0.00 m</output></label>
+        <input id="lateral" type="range" min="-0.8" max="0.8" step="0.01" value="0">
         <div class="save-actions" style="display:flex;gap:8px;margin-top:16px">
           <button id="btn-save-settings" type="button" class="scan-button" style="margin:0;flex:1;height:38px;background:#1b4d3e;border-color:#53e9b5;color:#e6fff5;font-size:12px;display:flex;align-items:center;justify-content:center;gap:6px">
             <span style="font-size:14px;vertical-align:0">💾</span><span>保存设置参数</span>
@@ -229,46 +229,21 @@
           <button id="reference-toggle" type="button" aria-pressed="false">关闭参考模型</button>
         </div>
         <div class="camera-actions" style="margin-top:8px">
-          <button id="center-scan" class="scan-button" style="margin:0;min-height:38px;height:auto"><span>◎</span> 发起中心扫描</button>
-          <button id="ar-zero" type="button">漂移归零</button>
+          <button id="center-scan" class="scan-button" style="margin:0;min-height:38px;height:auto;grid-column:1 / -1"><span>◎</span> 发起中心扫描</button>
         </div>
         <div class="toggle-row" style="margin-top:12px">
           <div><strong>待机中心涟漪</strong><small>准心落在地形上向外扩散</small></div>
           <label class="switch"><input id="idle-toggle" type="checkbox" checked><span></span></label>
         </div>
-        <div class="toggle-row" style="margin-top:10px">
-          <div><strong>视野裁剪</strong><small>只渲染落在视野内的锚点</small></div>
-          <label class="switch"><input id="ar-cull" type="checkbox" checked><span></span></label>
-        </div>
-        <div class="toggle-row" style="margin-top:10px">
-          <div><strong>遮挡剔除</strong><small>山体挡住锚点时一并隐藏光柱与图标</small></div>
-          <label class="switch"><input id="ar-occl" type="checkbox" checked><span></span></label>
-        </div>
-        <div class="toggle-row" style="margin-top:10px">
-          <div><strong>高频融合</strong><small>用 devicemotion 补足低频</small></div>
-          <label class="switch"><input id="ar-fusion" type="checkbox" checked><span></span></label>
-        </div>
-        <div class="toggle-row" style="margin-top:10px">
-          <div><strong>旋转偏心补偿</strong><small>补偿镜头偏离支架中轴的圆弧平移（防旋转脱节）</small></div>
-          <label class="switch"><input id="gimbal-toggle" type="checkbox"><span></span></label>
-        </div>
-        <div id="gimbal-offset-row" style="display:none;margin-top:8px">
-          <p class="hint-line" style="margin:0 0 6px;font-size:10px;color:#79978d">镜头光心相对两轴交点；+X 屏幕右、+Y 向上、+Z 背离沙盘</p>
-          <label class="slider-label" for="gimbal-offset-x"><span>偏移 X</span><output id="gimbal-offset-x-value">-0.120 m</output></label>
-          <input id="gimbal-offset-x" type="range" min="-0.25" max="0.25" step="0.001" value="-0.120">
-          <label class="slider-label" for="gimbal-offset-y"><span>偏移 Y</span><output id="gimbal-offset-y-value">+0.075 m</output></label>
-          <input id="gimbal-offset-y" type="range" min="-0.25" max="0.25" step="0.001" value="0.075">
-          <label class="slider-label" for="gimbal-offset-z"><span>偏移 Z</span><output id="gimbal-offset-z-value">-0.005 m</output></label>
-          <input id="gimbal-offset-z" type="range" min="-0.10" max="0.10" step="0.001" value="-0.005">
-        </div>
+        <label class="slider-label" for="pitch-offset"><span>画面上下俯仰对位</span><output id="pitch-offset-value">+0.0°</output></label>
+        <input id="pitch-offset" type="range" min="-15" max="15" step="0.1" value="0">
+        <p class="hint-line" style="margin:2px 0 0;font-size:10px;color:#79978d">正值上移、负值下移；直接微调镜头俯仰零位，使远端与近端同步上下贴合。</p>
         <label class="slider-label" for="terrain-y-offset"><span>虚拟沙盘整体上下对位</span><output id="terrain-y-offset-value">+0.000 m</output></label>
         <input id="terrain-y-offset" type="range" min="-0.30" max="0.30" step="0.001" value="0">
-        <p class="hint-line" style="margin:2px 0 0;font-size:10px;color:#79978d">正值上移、负值下移；整体移动地形、扫描层、边界和锚点，不改变支架偏心参数。</p>
+        <p class="hint-line" style="margin:2px 0 0;font-size:10px;color:#79978d">正值上移、负值下移；微调虚拟沙盘垂直基准高度。</p>
         <label class="slider-label" for="terrain-scale"><span>虚拟沙盘大小缩放</span><output id="terrain-scale-value">1.000×</output></label>
         <input id="terrain-scale" type="range" min="0.50" max="1.80" step="0.005" value="1.000">
         <p class="hint-line" style="margin:2px 0 0;font-size:10px;color:#79978d">1.000× 为基准；整体缩放地形、扫描层、边界和地标位置，匹配实物沙盘视野大小。</p>
-        <button id="gyro-diag-record" type="button" style="width:100%;margin-top:12px">记录姿态诊断（20 秒）</button>
-        <p id="gyro-diag-status" class="camera-status" aria-live="polite" style="margin-top:6px">调整支架 XYZ 偏移后先重新对齐；沙盘整体上下对位与大小缩放无需重新对齐。每组录 20 秒，结束后再点按钮下载 CSV。</p>
         <button id="gyro-toggle" hidden></button>
         <button id="camera-toggle" hidden></button>
         <button id="ar-reset-view" type="button" style="display:none"></button>
@@ -287,6 +262,6 @@
     </aside>
   </main>
   <div id="loading" class="on">正在加载湖南地形数据…</div>
-  <script type="module" src="./holo-app.js?v=20261020-pad6-fov1"></script>
+  <script type="module" src="./holo-app.js?v=20261020-clean-calib1"></script>
 </body>
 </html>
