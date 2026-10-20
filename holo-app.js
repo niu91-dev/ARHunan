@@ -1262,7 +1262,7 @@ function setPitchOffset(value) {
 }
 
 function setTerrainYOffset(value) {
-  const next = clamp(Number(value), -0.30, 0.30);
+  const next = clamp(Number(value), -0.60, 0.60);
   P.terrainYOffset = next;
   const input = document.getElementById('terrain-y-offset');
   const output = document.getElementById('terrain-y-offset-value');

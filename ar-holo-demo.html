@@ -252,17 +252,17 @@
         <div id="gimbal-offset-row" style="display:none;margin-top:8px">
           <p class="hint-line" style="margin:0 0 6px;font-size:10px;color:#79978d">镜头光心相对旋转支点；+X 屏幕右、+Y 向上、+Z 背离沙盘</p>
           <label class="slider-label" for="gimbal-offset-x"><span>偏移 X</span><output id="gimbal-offset-x-value">-0.120 m</output></label>
-          <input id="gimbal-offset-x" type="range" min="-0.25" max="0.25" step="0.001" value="-0.120">
+          <input id="gimbal-offset-x" type="range" min="-0.60" max="0.60" step="0.001" value="-0.120">
           <label class="slider-label" for="gimbal-offset-y"><span>偏移 Y</span><output id="gimbal-offset-y-value">+0.075 m</output></label>
-          <input id="gimbal-offset-y" type="range" min="-0.25" max="0.25" step="0.001" value="0.075">
+          <input id="gimbal-offset-y" type="range" min="-0.60" max="0.60" step="0.001" value="0.075">
           <label class="slider-label" for="gimbal-offset-z"><span>偏移 Z</span><output id="gimbal-offset-z-value">-0.005 m</output></label>
-          <input id="gimbal-offset-z" type="range" min="-0.10" max="0.10" step="0.001" value="-0.005">
+          <input id="gimbal-offset-z" type="range" min="-0.40" max="0.40" step="0.001" value="-0.005">
         </div>
         <label class="slider-label" for="pitch-offset"><span>画面上下俯仰对位</span><output id="pitch-offset-value">+0.0°</output></label>
         <input id="pitch-offset" type="range" min="-15" max="15" step="0.1" value="0">
         <p class="hint-line" style="margin:2px 0 0;font-size:10px;color:#79978d">正值上移、负值下移；直接微调镜头俯仰零位，使远端与近端同步上下贴合。</p>
         <label class="slider-label" for="terrain-y-offset"><span>虚拟沙盘整体上下对位</span><output id="terrain-y-offset-value">+0.000 m</output></label>
-        <input id="terrain-y-offset" type="range" min="-0.30" max="0.30" step="0.001" value="0">
+        <input id="terrain-y-offset" type="range" min="-0.60" max="0.60" step="0.001" value="0">
         <p class="hint-line" style="margin:2px 0 0;font-size:10px;color:#79978d">正值上移、负值下移；微调虚拟沙盘垂直基准高度。</p>
         <label class="slider-label" for="terrain-scale"><span>虚拟沙盘大小缩放</span><output id="terrain-scale-value">1.000×</output></label>
         <input id="terrain-scale" type="range" min="0.50" max="1.80" step="0.005" value="1.000">
@@ -284,6 +284,6 @@
     </aside>
   </main>
   <div id="loading" class="on">正在加载湖南地形数据…</div>
-  <script type="module" src="./holo-app.js?v=20261020-gyro-fix2"></script>
+  <script type="module" src="./holo-app.js?v=20261020-range-expand1"></script>
 </body>
 </html>
