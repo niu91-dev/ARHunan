@@ -213,6 +213,57 @@ const pitchOk = pitchShift.offset === 3.5 && Math.abs(Math.abs(pitchShift.deltaP
 await evaluate(`document.getElementById('pitch-offset').value='0';
   document.getElementById('pitch-offset').dispatchEvent(new Event('input',{bubbles:true})); 'ok'`);
 
+/* 沙盘前后对位 (Shift Z) 验证 */
+const zShiftTest = await evalJson(`(()=>{
+  const before = window.__holo.markerWorld('zhangjiajie');
+  const slider = document.getElementById('shift-z');
+  slider.value = '0.150'; slider.dispatchEvent(new Event('input', {bubbles:true}));
+  const after = window.__holo.markerWorld('zhangjiajie');
+  const s = window.__holo.state;
+  return {
+    shiftZ: s.shiftZ,
+    deltaZ: Number((after.ground[2] - before.ground[2]).toFixed(3)),
+    readout: document.getElementById('shift-z-value').textContent
+  };
+})()`);
+const zShiftOk = zShiftTest.shiftZ === 0.15 && Math.abs(zShiftTest.deltaZ - (0.15 - 0.38)) < 0.005 && zShiftTest.readout === '+0.150 m';
+(zShiftOk ? ok : bad)('沙盘前后对位 (Shift Z) 同步平移地形与锚点（' + JSON.stringify(zShiftTest) + '）');
+await evaluate(`document.getElementById('shift-z').value='0.380';
+  document.getElementById('shift-z').dispatchEvent(new Event('input',{bubbles:true})); 'ok'`);
+
+/* 沙盘左右对位 (Shift X) 验证 */
+const xShiftTest = await evalJson(`(()=>{
+  const before = window.__holo.markerWorld('zhangjiajie');
+  const slider = document.getElementById('shift-x');
+  slider.value = '-0.050'; slider.dispatchEvent(new Event('input', {bubbles:true}));
+  const after = window.__holo.markerWorld('zhangjiajie');
+  const s = window.__holo.state;
+  return {
+    shiftX: s.shiftX,
+    deltaX: Number((after.ground[0] - before.ground[0]).toFixed(3)),
+    readout: document.getElementById('shift-x-value').textContent
+  };
+})()`);
+const xShiftOk = xShiftTest.shiftX === -0.05 && Math.abs(xShiftTest.deltaX - (-0.05)) < 0.005 && xShiftTest.readout === '-0.050 m';
+(xShiftOk ? ok : bad)('沙盘左右对位 (Shift X) 同步平移地形与锚点（' + JSON.stringify(xShiftTest) + '）');
+await evaluate(`document.getElementById('shift-x').value='0';
+  document.getElementById('shift-x').dispatchEvent(new Event('input',{bubbles:true})); 'ok'`);
+
+/* 沙盘长宽比 (Aspect Ratio) 验证 */
+const arTest = await evalJson(`(()=>{
+  const slider = document.getElementById('aspect-ratio');
+  slider.value = '1.050'; slider.dispatchEvent(new Event('input', {bubbles:true}));
+  const s = window.__holo.state;
+  return {
+    aspectRatio: s.aspectRatio,
+    readout: document.getElementById('aspect-ratio-value').textContent
+  };
+})()`);
+const arOk = arTest.aspectRatio === 1.05 && arTest.readout === '1.050';
+(arOk ? ok : bad)('沙盘长宽比微调正常生效（' + JSON.stringify(arTest) + '）');
+await evaluate(`document.getElementById('aspect-ratio').value='1.000';
+  document.getElementById('aspect-ratio').dispatchEvent(new Event('input',{bubbles:true})); 'ok'`);
+
 const openShot = await send('Page.captureScreenshot', { format: 'png' });
 writeFileSync(join(HERE, '_holo_open.png'), Buffer.from(openShot.data, 'base64'));
 await evaluate(`document.getElementById('btn-close-panel').click()`);

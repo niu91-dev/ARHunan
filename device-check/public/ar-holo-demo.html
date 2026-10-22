@@ -264,9 +264,18 @@
         <label class="slider-label" for="terrain-y-offset"><span>虚拟沙盘整体上下对位</span><output id="terrain-y-offset-value">+0.000 m</output></label>
         <input id="terrain-y-offset" type="range" min="-0.60" max="0.60" step="0.001" value="0">
         <p class="hint-line" style="margin:2px 0 0;font-size:10px;color:#79978d">正值上移、负值下移；微调虚拟沙盘垂直基准高度。</p>
+        <label class="slider-label" for="shift-z"><span>沙盘前后对位 (Z)</span><output id="shift-z-value">+0.380 m</output></label>
+        <input id="shift-z" type="range" min="-0.20" max="0.80" step="0.005" value="0.380">
+        <p class="hint-line" style="margin:2px 0 0;font-size:10px;color:#79978d">正值向前移向 Pad、负值向后推远；把沙盘近端断崖拉回真实边缘。</p>
+        <label class="slider-label" for="shift-x"><span>沙盘左右对位 (X)</span><output id="shift-x-value">+0.000 m</output></label>
+        <input id="shift-x" type="range" min="-0.60" max="0.60" step="0.005" value="0">
+        <p class="hint-line" style="margin:2px 0 0;font-size:10px;color:#79978d">正值右移、负值左移；微调沙盘水平居中对位。</p>
         <label class="slider-label" for="terrain-scale"><span>虚拟沙盘大小缩放</span><output id="terrain-scale-value">1.000×</output></label>
         <input id="terrain-scale" type="range" min="0.50" max="1.80" step="0.005" value="1.000">
         <p class="hint-line" style="margin:2px 0 0;font-size:10px;color:#79978d">1.000× 为基准；整体缩放地形、扫描层、边界和地标位置，匹配实物沙盘视野大小。</p>
+        <label class="slider-label" for="aspect-ratio"><span>沙盘长宽比 (南北/东西)</span><output id="aspect-ratio-value">1.000</output></label>
+        <input id="aspect-ratio" type="range" min="0.800" max="1.200" step="0.005" value="1.000">
+        <p class="hint-line" style="margin:2px 0 0;font-size:10px;color:#79978d">调节南北相对东西的拉伸比例，吸收实体沙盘人工制作公差。</p>
         <button id="camera-toggle" hidden></button>
         <button id="ar-reset-view" type="button" style="display:none"></button>
         <p id="ar-status" class="camera-status" style="margin-top:10px">摄像头与陀螺仪已自动启用</p>
@@ -284,6 +293,6 @@
     </aside>
   </main>
   <div id="loading" class="on">正在加载湖南地形数据…</div>
-  <script type="module" src="./holo-app.js?v=20261020-generic-sensor1"></script>
+  <script type="module" src="./holo-app.js?v=20261022-rigidbody-calib1"></script>
 </body>
 </html>

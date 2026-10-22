@@ -667,10 +667,13 @@ export function createArCamera({ camera, params, hooks = {} }) {
   function worldToUv(x, z, out) {
     const P = params();
     const scale = P.terrainScale || 1.0;
+    const ar = P.aspectRatio || 1.0;
+    const scaleEW = scale / ar;
+    const scaleNS = scale * ar;
     const p = new THREE.Vector3(x - (P.shiftX || 0), 0, z - (P.shiftZ || 0));
     p.applyAxisAngle(UP_Y, +Math.PI / 2);
-    const u = p.x / (P.tableW * scale) + 0.5;
-    const v = 0.5 - p.z / (P.tableD * scale);
+    const u = p.x / (P.tableW * scaleEW) + 0.5;
+    const v = 0.5 - p.z / (P.tableD * scaleNS);
     return (out || new THREE.Vector2()).set(u, v);
   }
 
@@ -683,7 +686,10 @@ export function createArCamera({ camera, params, hooks = {} }) {
     const thr = wasOccluded ? OCC_EPS_OUT : OCC_EPS_IN;
     const dx = target.x - camPos.x, dy = target.y - camPos.y, dz = target.z - camPos.z;
     const scale = P.terrainScale || 1.0;
-    const halfW = P.tableW * scale * 0.5, halfD = P.tableD * scale * 0.5;
+    const ar = P.aspectRatio || 1.0;
+    const scaleEW = scale / ar;
+    const scaleNS = scale * ar;
+    const halfW = P.tableW * scaleEW * 0.5, halfD = P.tableD * scaleNS * 0.5;
     const centerX = P.shiftX || 0, centerZ = P.shiftZ || 0;
     const yOff = P.terrainYOffset || 0;
     for (let i = 1; i <= OCC_STEPS; i++) {
@@ -693,8 +699,8 @@ export function createArCamera({ camera, params, hooks = {} }) {
       const p = new THREE.Vector3(x - centerX, 0, z - centerZ);
       p.applyAxisAngle(UP_Y, +Math.PI / 2);
       if (Math.abs(p.x) > halfW || Math.abs(p.z) > halfD) continue;
-      const u = p.x / (P.tableW * scale) + 0.5;
-      const v = 0.5 - p.z / (P.tableD * scale);
+      const u = p.x / (P.tableW * scaleEW) + 0.5;
+      const v = 0.5 - p.z / (P.tableD * scaleNS);
       _occUv.set(u, v);
       const fieldY = P.heightAtUv(_occUv) * scale + yOff;
       if (fieldY - y > thr) return true;
@@ -722,7 +728,10 @@ export function createArCamera({ camera, params, hooks = {} }) {
     const out = [];
     const dx = target.x - camPos.x, dy = target.y - camPos.y, dz = target.z - camPos.z;
     const scale = P.terrainScale || 1.0;
-    const halfW = P.tableW * scale * 0.5, halfD = P.tableD * scale * 0.5;
+    const ar = P.aspectRatio || 1.0;
+    const scaleEW = scale / ar;
+    const scaleNS = scale * ar;
+    const halfW = P.tableW * scaleEW * 0.5, halfD = P.tableD * scaleNS * 0.5;
     const centerX = P.shiftX || 0, centerZ = P.shiftZ || 0;
     const yOff = P.terrainYOffset || 0;
     for (let i = 1; i <= n; i++) {
@@ -731,8 +740,8 @@ export function createArCamera({ camera, params, hooks = {} }) {
       const p = new THREE.Vector3(x - centerX, 0, z - centerZ);
       p.applyAxisAngle(UP_Y, +Math.PI / 2);
       if (Math.abs(p.x) > halfW || Math.abs(p.z) > halfD) continue;
-      const u = p.x / (P.tableW * scale) + 0.5;
-      const v = 0.5 - p.z / (P.tableD * scale);
+      const u = p.x / (P.tableW * scaleEW) + 0.5;
+      const v = 0.5 - p.z / (P.tableD * scaleNS);
       _occUv.set(u, v);
       const fieldY = P.heightAtUv(_occUv) * scale + yOff;
       out.push({
