@@ -66,6 +66,7 @@ const P = {
   shiftZ: 0.38,                                 // 沿视线向南平移 38 cm（匹配实物沙盘在圆盘中的真实质心）
   terrainYOffset: 0,                            // 虚拟层相对实体沙盘的整体竖直对位（独立于镜头支点偏移）
   terrainScale: 1.0,                            // 虚拟沙盘整体缩放比例（1.000 为基准尺寸）
+  aspectRatio: 1.0,                             // 沙盘长宽比微调（南北/东西，1.000 为基准）
   pitchOffsetDeg: 0,                            // 镜头光学俯仰零位微调（度，正值画面整体上移、负值下移）
   camHeight: 0.58,                              // 相机离沙盘台面高度（实测 0.58 m）
   camDist: 1.93,                                // 相机离沙盘中心水平距离（实测 1.93 m）
@@ -145,7 +146,10 @@ function geoUv(lon, lat) {
   /* ---------- 空间朝向变换（顺时针旋转90°，严格匹配现场物理沙盘：右北、左南、上西、下东）---------- */
   function uvToWorld(u, v, y = 0.0) {
     const scale = P.terrainScale ?? 1.0;
-    const p = new THREE.Vector3((u - 0.5) * P.tableW * scale, y * scale, (0.5 - v) * P.tableD * scale);
+    const ar = P.aspectRatio ?? 1.0;
+    const scaleEW = scale / ar;
+    const scaleNS = scale * ar;
+    const p = new THREE.Vector3((u - 0.5) * P.tableW * scaleEW, y * scale, (0.5 - v) * P.tableD * scaleNS);
     p.applyAxisAngle(UP_Y, -Math.PI / 2);
     p.add(new THREE.Vector3(P.shiftX || 0, P.terrainYOffset || 0, P.shiftZ || 0));
     return p;
@@ -155,10 +159,13 @@ function geoUv(lon, lat) {
    让 buildSites / 诊断出口不必依赖 ar 实例（加载顺序更简单）。 */
 function worldToUv(x, z, out) {
     const scale = P.terrainScale ?? 1.0;
+    const ar = P.aspectRatio ?? 1.0;
+    const scaleEW = scale / ar;
+    const scaleNS = scale * ar;
     const p = new THREE.Vector3(x - (P.shiftX || 0), 0, z - (P.shiftZ || 0));
     p.applyAxisAngle(UP_Y, +Math.PI / 2);
-    const u = p.x / (P.tableW * scale) + 0.5;
-    const v = 0.5 - p.z / (P.tableD * scale);
+    const u = p.x / (P.tableW * scaleEW) + 0.5;
+    const v = 0.5 - p.z / (P.tableD * scaleNS);
     return (out || new THREE.Vector2()).set(u, v);
 }
 
@@ -550,6 +557,9 @@ function buildGroundBeacon(uv,index) {
 function refreshSiteMarker(marker) {
   const uv = marker.uv;
   const scale = P.terrainScale || 1.0;
+  const ar = P.aspectRatio || 1.0;
+  const scaleEW = scale / ar;
+  const scaleNS = scale * ar;
   const groundPoint = uvToWorld(uv.x, uv.y, terrainHeightAt(uv) + 0.004);
   marker.groundPoint.copy(groundPoint);
   marker.point.copy(groundPoint);
@@ -568,8 +578,8 @@ function refreshSiteMarker(marker) {
       for (let ix = 0; ix <= step; ix++) {
         const x = ix * (w / step) - radius;
         const sample = new THREE.Vector2(
-          uv.x + x / (P.tableW * scale),
-          uv.y + y / (P.tableD * scale)
+          uv.x + x / (P.tableW * scaleEW),
+          uv.y + y / (P.tableD * scaleNS)
         );
         const wp = uvToWorld(sample.x, sample.y, terrainHeightAt(sample) + 0.004);
         pos.setXYZ(idx++, wp.x, wp.y - (P.terrainYOffset || 0), wp.z);
@@ -990,6 +1000,16 @@ function setupControls() {
     setTerrainYOffset(event.target.value);
     noteCameraMotion();
   });
+  const shiftZ = document.getElementById('shift-z');
+  if (shiftZ) shiftZ.addEventListener('input', event => {
+    setTerrainShiftZ(event.target.value);
+    noteCameraMotion();
+  });
+  const shiftX = document.getElementById('shift-x');
+  if (shiftX) shiftX.addEventListener('input', event => {
+    setTerrainShiftX(event.target.value);
+    noteCameraMotion();
+  });
   const pitchOffset = document.getElementById('pitch-offset');
   if (pitchOffset) pitchOffset.addEventListener('input', event => {
     setPitchOffset(event.target.value);
@@ -998,6 +1018,11 @@ function setupControls() {
   const terrainScale = document.getElementById('terrain-scale');
   if (terrainScale) terrainScale.addEventListener('input', event => {
     setTerrainScale(event.target.value);
+    noteCameraMotion();
+  });
+  const aspectRatio = document.getElementById('aspect-ratio');
+  if (aspectRatio) aspectRatio.addEventListener('input', event => {
+    setAspectRatio(event.target.value);
     noteCameraMotion();
   });
   document.querySelectorAll('[data-dir]').forEach(button => button.addEventListener('click', () => {
@@ -1261,6 +1286,68 @@ function setPitchOffset(value) {
   if (ar && ar.isManualLook()) ar.resetLook();
 }
 
+function applyTerrainTransforms() {
+  const scale = P.terrainScale || 1.0;
+  const ar = P.aspectRatio || 1.0;
+  const scaleEW = scale / ar;
+  const scaleNS = scale * ar;
+  const posX = P.shiftX || 0;
+  const posY = P.terrainYOffset || 0;
+  const posZ = P.shiftZ || 0;
+
+  if (terrain) {
+    terrain.position.set(posX, posY, posZ);
+    terrain.scale.set(scaleEW, scale, scaleNS);
+  }
+  if (scanSurface) {
+    scanSurface.points.position.set(posX, posY, posZ);
+    scanSurface.points.scale.set(scaleEW, scale, scaleNS);
+    scanSurface.links.position.set(posX, posY, posZ);
+    scanSurface.links.scale.set(scaleEW, scale, scaleNS);
+  }
+  for (const object of referenceObjects) {
+    if (object.name === 'HunanBoundarySkirt') {
+      object.position.set(posX, posY, posZ);
+      object.scale.set(scaleNS, scale, scaleEW);
+    } else if (object.name?.startsWith('TableCircle_')) {
+      object.position.y = posY;
+    }
+  }
+  for (const marker of siteMarkers) {
+    refreshSiteMarker(marker);
+  }
+}
+
+function setTerrainShiftZ(value) {
+  const next = clamp(Number(value), -0.20, 0.80);
+  P.shiftZ = next;
+  const input = document.getElementById('shift-z');
+  const output = document.getElementById('shift-z-value');
+  if (input) input.value = next.toFixed(3);
+  if (output) output.textContent = `${next >= 0 ? '+' : ''}${next.toFixed(3)} m`;
+  applyTerrainTransforms();
+}
+
+function setTerrainShiftX(value) {
+  const next = clamp(Number(value), -0.60, 0.60);
+  P.shiftX = next;
+  const input = document.getElementById('shift-x');
+  const output = document.getElementById('shift-x-value');
+  if (input) input.value = next.toFixed(3);
+  if (output) output.textContent = `${next >= 0 ? '+' : ''}${next.toFixed(3)} m`;
+  applyTerrainTransforms();
+}
+
+function setAspectRatio(value) {
+  const next = clamp(Number(value), 0.800, 1.200);
+  P.aspectRatio = next;
+  const input = document.getElementById('aspect-ratio');
+  const output = document.getElementById('aspect-ratio-value');
+  if (input) input.value = next.toFixed(3);
+  if (output) output.textContent = next.toFixed(3);
+  applyTerrainTransforms();
+}
+
 function setTerrainYOffset(value) {
   const next = clamp(Number(value), -0.60, 0.60);
   P.terrainYOffset = next;
@@ -1268,18 +1355,7 @@ function setTerrainYOffset(value) {
   const output = document.getElementById('terrain-y-offset-value');
   if (input) input.value = next.toFixed(3);
   if (output) output.textContent = `${next >= 0 ? '+' : ''}${next.toFixed(3)} m`;
-
-  if (terrain) terrain.position.y = next;
-  if (scanSurface) {
-    scanSurface.points.position.y = next;
-    scanSurface.links.position.y = next;
-  }
-  for (const object of referenceObjects) {
-    if (object.name?.startsWith('TableCircle_') || object.name === 'HunanBoundarySkirt') object.position.y = next;
-  }
-  for (const marker of siteMarkers) {
-    refreshSiteMarker(marker);
-  }
+  applyTerrainTransforms();
 }
 
 function setTerrainScale(value) {
@@ -1289,18 +1365,7 @@ function setTerrainScale(value) {
   const output = document.getElementById('terrain-scale-value');
   if (input) input.value = next.toFixed(3);
   if (output) output.textContent = `${next.toFixed(3)}×`;
-
-  if (terrain) terrain.scale.set(next, next, next);
-  if (scanSurface) {
-    scanSurface.points.scale.set(next, next, next);
-    scanSurface.links.scale.set(next, next, next);
-  }
-  for (const object of referenceObjects) {
-    if (object.name === 'HunanBoundarySkirt') object.scale.set(next, next, next);
-  }
-  for (const marker of siteMarkers) {
-    refreshSiteMarker(marker);
-  }
+  applyTerrainTransforms();
 }
 
 function setupPoseDiagnosticRecorder() {
@@ -1615,6 +1680,9 @@ const DEFAULT_SETTINGS = {
   gimbalOffsetZ: -0.005,
   terrainYOffset: 0,
   terrainScale: 1.0,
+  shiftZ: 0.38,
+  shiftX: 0.0,
+  aspectRatio: 1.0,
   pitchOffsetDeg: 0,
 };
 
@@ -1643,6 +1711,9 @@ function applySettingsToUI(s) {
   }
   if (s.terrainYOffset !== undefined) setTerrainYOffset(Number(s.terrainYOffset));
   if (s.terrainScale !== undefined) setTerrainScale(Number(s.terrainScale));
+  if (s.shiftZ !== undefined) setTerrainShiftZ(Number(s.shiftZ));
+  if (s.shiftX !== undefined) setTerrainShiftX(Number(s.shiftX));
+  if (s.aspectRatio !== undefined) setAspectRatio(Number(s.aspectRatio));
   if (s.pitchOffsetDeg !== undefined) setPitchOffset(Number(s.pitchOffsetDeg));
   if (s.lateral !== undefined) {
     P.lateral = Number(s.lateral);
@@ -1725,6 +1796,9 @@ function setupSettingsPersistence() {
       gimbalOffsetZ: P.gimbal ? P.gimbal.off.z : -0.005,
       terrainYOffset: P.terrainYOffset,
       terrainScale: P.terrainScale,
+      shiftZ: P.shiftZ,
+      shiftX: P.shiftX,
+      aspectRatio: P.aspectRatio,
       pitchOffsetDeg: P.pitchOffsetDeg,
       savedAt: new Date().toISOString(),
     };
@@ -1927,6 +2001,9 @@ async function load() {
           camHeight: P.camHeight, camDist: P.camDist, lateral: P.lateral,
           terrainYOffset: P.terrainYOffset,
           terrainScale: P.terrainScale,
+          shiftZ: P.shiftZ,
+          shiftX: P.shiftX,
+          aspectRatio: P.aspectRatio,
           pitchOffsetDeg: P.pitchOffsetDeg,
           terrainScaleVec: terrain?.scale.toArray() ?? null,
           terrainY: terrain?.position.y ?? null,
@@ -1960,6 +2037,9 @@ async function load() {
       setOcclusion(v) { P.occlusion = !!v; syncArStatus(); return P.occlusion; },
       setTerrainYOffset,
       setTerrainScale,
+      setTerrainShiftZ,
+      setTerrainShiftX,
+      setAspectRatio,
       setPitchOffset,
       setManualLook: v => ar.setManualLook(v),
       nudgeLook: (y, p) => ar.nudgeLook(y, p),
