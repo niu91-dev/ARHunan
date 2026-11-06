@@ -20,7 +20,7 @@ import * as THREE from 'three';
 import { SITES, GEO_BOUNDS } from './sites.js';
 import { createTerrainScan } from './scan-surface.js';
 import { setupCameraPreview } from './camera-preview.js';
-import { createArCamera, OCCLUSION_THRESHOLDS } from './holo-ar.js?v=20261020-clean-calib1';
+import { createArCamera, OCCLUSION_THRESHOLDS } from './holo-ar.js?v=20261106-range2x';
 
 const scanReview = new URLSearchParams(location.search).get('review') === 'scan';
 document.body.classList.toggle('scan-review', scanReview);
@@ -1094,7 +1094,7 @@ function setupControls() {
   canvas.addEventListener('wheel', event => {
     event.preventDefault();
     clearManualFocus();
-    P.camDist = clamp(P.camDist + Math.sign(event.deltaY) * 0.2, 4.2, 9.5);
+    P.camDist = clamp(P.camDist + Math.sign(event.deltaY) * 0.2, 0.2, 5.2);
     const di = document.getElementById('distance');
     di.value = P.camDist;
     document.getElementById('distance-value').textContent = `${P.camDist.toFixed(1)} m`;
@@ -1277,7 +1277,7 @@ function setGimbalOffsetControlsVisible(visible) {
 }
 
 function setPitchOffset(value) {
-  const next = clamp(Number(value), -15, 15);
+  const next = clamp(Number(value), -30, 30);
   P.pitchOffsetDeg = next;
   const input = document.getElementById('pitch-offset');
   const output = document.getElementById('pitch-offset-value');
@@ -1319,7 +1319,7 @@ function applyTerrainTransforms() {
 }
 
 function setTerrainShiftZ(value) {
-  const next = clamp(Number(value), -0.20, 0.80);
+  const next = clamp(Number(value), -0.70, 1.30);
   P.shiftZ = next;
   const input = document.getElementById('shift-z');
   const output = document.getElementById('shift-z-value');
@@ -1329,7 +1329,7 @@ function setTerrainShiftZ(value) {
 }
 
 function setTerrainShiftX(value) {
-  const next = clamp(Number(value), -0.60, 0.60);
+  const next = clamp(Number(value), -1.20, 1.20);
   P.shiftX = next;
   const input = document.getElementById('shift-x');
   const output = document.getElementById('shift-x-value');
@@ -1339,7 +1339,7 @@ function setTerrainShiftX(value) {
 }
 
 function setAspectRatio(value) {
-  const next = clamp(Number(value), 0.800, 1.200);
+  const next = clamp(Number(value), 0.600, 1.400);
   P.aspectRatio = next;
   const input = document.getElementById('aspect-ratio');
   const output = document.getElementById('aspect-ratio-value');
@@ -1349,7 +1349,7 @@ function setAspectRatio(value) {
 }
 
 function setTerrainYOffset(value) {
-  const next = clamp(Number(value), -0.60, 0.60);
+  const next = clamp(Number(value), -1.20, 1.20);
   P.terrainYOffset = next;
   const input = document.getElementById('terrain-y-offset');
   const output = document.getElementById('terrain-y-offset-value');
@@ -1359,7 +1359,7 @@ function setTerrainYOffset(value) {
 }
 
 function setTerrainScale(value) {
-  const next = clamp(Number(value), 0.50, 2.00);
+  const next = clamp(Number(value), 0.05, 2.65);
   P.terrainScale = next;
   const input = document.getElementById('terrain-scale');
   const output = document.getElementById('terrain-scale-value');
