@@ -2,8 +2,12 @@ package com.hunan.ar.sandtable;
 
 import android.Manifest;
 import android.content.pm.PackageManager;
+import android.graphics.Color;
 import android.os.Build;
 import android.os.Bundle;
+import android.util.Log;
+import android.util.TypedValue;
+import android.view.Gravity;
 import android.view.View;
 import android.view.WindowInsets;
 import android.view.WindowInsetsController;
@@ -30,11 +34,25 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
+        installCrashHandler();
+        writeLog("onCreate start, sdk=" + Build.VERSION.SDK_INT, null);
+
         // 保持屏幕常亮
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+
+        try {
+            initWebView();
+        } catch (Throwable t) {
+            writeLog("initWebView failed", t);
+            showFatalScreen("WebView 初始化失败\n\n" + t);
+        }
+    }
+
+    private void initWebView() {
         hideSystemUI();
 
         webView = new WebView(this);
+        WebView.setWebContentsDebuggingEnabled(true);
         setContentView(webView);
 
         // 建立离线虚拟 HTTPS 资产映射（确保满足 camera 和传感器的 secure context 要求）
@@ -55,13 +73,24 @@ public class MainActivity extends AppCompatActivity {
             public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
                 return assetLoader.shouldInterceptRequest(request.getUrl());
             }
+
+            @Override
+            public void onReceivedError(WebView view, WebResourceRequest request, android.webkit.WebResourceError error) {
+                writeLog("onReceivedError " + request.getUrl() + " -> " + error.getDescription(), null);
+            }
         });
 
         webView.setWebChromeClient(new WebChromeClient() {
             @Override
             public void onPermissionRequest(final PermissionRequest request) {
                 // 网页请求相机或音频权限时，直接自动批准放行
-                runOnUiThread(() -> request.grant(request.getResources()));
+                runOnUiThread(() -> {
+                    try {
+                        request.grant(request.getResources());
+                    } catch (Throwable t) {
+                        writeLog("grant permission failed", t);
+                    }
+                });
             }
         });
 
@@ -74,7 +103,68 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void loadArDemo() {
-        webView.loadUrl("https://appassets.androidplatform.net/assets/ar-holo-demo.html");
+        try {
+            webView.loadUrl("https://appassets.androidplatform.net/assets/ar-holo-demo.html");
+        } catch (Throwable t) {
+            writeLog("loadUrl failed", t);
+            showFatalScreen("加载页面失败\n\n" + t);
+        }
+    }
+
+    /** 把未捕获异常写入应用私有目录，便于现场排查 */
+    private void installCrashHandler() {
+        final Thread.UncaughtExceptionHandler previous = Thread.getDefaultUncaughtExceptionHandler();
+        Thread.setDefaultUncaughtExceptionHandler((thread, throwable) -> {
+            writeLog("UNCAUGHT on " + thread.getName(), throwable);
+            if (previous != null) {
+                previous.uncaughtException(thread, throwable);
+            }
+        });
+    }
+
+    private void writeLog(String tag, Throwable t) {
+        Log.e("HunanAR", tag, t);
+        try {
+            String text;
+            if (t != null) {
+                java.io.StringWriter sw = new java.io.StringWriter();
+                t.printStackTrace(new java.io.PrintWriter(sw));
+                text = tag + "\n" + sw.toString();
+            } else {
+                text = tag;
+            }
+            java.io.File dir = getExternalFilesDir(null);
+            if (dir == null) {
+                dir = getFilesDir();
+            }
+            java.io.File file = new java.io.File(dir, "crash.log");
+            java.io.FileOutputStream out = new java.io.FileOutputStream(file, true);
+            String stamp = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US)
+                    .format(new java.util.Date());
+            out.write((stamp + "  " + text + "\n\n").getBytes("UTF-8"));
+            out.close();
+        } catch (Throwable ignored) {
+            // 写日志本身失败时不再抛异常
+        }
+    }
+
+    private void showFatalScreen(String message) {
+        TextView tv = new TextView(this);
+        tv.setText(message + "\n\n崩溃日志：" + getLogPath());
+        tv.setTextColor(Color.WHITE);
+        tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+        tv.setGravity(Gravity.CENTER);
+        tv.setPadding(48, 48, 48, 48);
+        tv.setBackgroundColor(Color.parseColor("#1B2220"));
+        setContentView(tv);
+    }
+
+    private String getLogPath() {
+        java.io.File dir = getExternalFilesDir(null);
+        if (dir == null) {
+            dir = getFilesDir();
+        }
+        return new java.io.File(dir, "crash.log").getAbsolutePath();
     }
 
     @Override
